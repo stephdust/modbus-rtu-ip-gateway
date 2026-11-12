@@ -814,7 +814,7 @@ class ModbusGateway : public Component {
       // UDP is connectionless; do not report TCP keepalive events.
     } else if (!tcp_persistent_) {
       client_.stop();
-    } else {
+    } else if (transport_ == "TCP") {
       const String target = String(cfg_host_.c_str()) + ":" + String(cfg_port_);
       add_event_("TCP KEEP", String("Persistent connection kept open to ") + target + ".");
     }
@@ -1179,7 +1179,8 @@ class ModbusGateway : public Component {
   }
 
   void start_udp_client_transaction_(uint8_t unit_id, const std::vector<uint8_t> &pdu) {
-    if (udp_.parsePacket() > 0) {
+    // Ignore any stale datagrams from a previous transaction.
+    for (unsigned i = 0; i < 4 && udp_.parsePacket() > 0; ++i) {
       uint8_t stale[260];
       while (udp_.available()) udp_.read(stale, sizeof(stale));
     }
