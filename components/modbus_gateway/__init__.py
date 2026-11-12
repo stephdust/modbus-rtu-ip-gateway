@@ -13,6 +13,7 @@ ModbusGateway = gateway_ns.class_("ModbusGateway", cg.Component)
 
 CONF_TCP_HOST = "tcp_host"
 CONF_TCP_MODE = "tcp_mode"
+CONF_TRANSPORT = "transport"
 CONF_TCP_PORT = "tcp_port"
 CONF_BAUD = "baud"
 CONF_DATA_BITS = "data_bits"
@@ -24,6 +25,7 @@ CONFIG_SCHEMA = cv.Schema({
     cv.GenerateID(): cv.declare_id(ModbusGateway),
     cv.Optional(CONF_TCP_HOST, default="192.168.1.100"): cv.string,
     cv.Optional(CONF_TCP_MODE, default="CLIENT"): cv.one_of("CLIENT", "SERVER", upper=True),
+    cv.Optional(CONF_TRANSPORT, default="TCP"): cv.one_of("TCP", "UDP", upper=True),
     cv.Optional(CONF_TCP_PORT, default=502): cv.port,
     cv.Optional(CONF_BAUD, default=9600): cv.int_range(min=1200, max=115200),
     cv.Optional(CONF_DATA_BITS, default=8): cv.one_of(7, 8, int=True),
@@ -42,6 +44,7 @@ async def to_code(config):
     # the Arduino libraries used by modbus_gateway.h.
     if CORE.is_esp32 and CORE.using_arduino:
         cg.add_library("WiFi", None)
+        cg.add_library("Network", None)
         cg.add_library("WebServer", None)
         cg.add_library("Preferences", None)
 
@@ -50,6 +53,7 @@ async def to_code(config):
     cg.add(var.set_version(component_version))
     cg.add(var.set_tcp_host(config[CONF_TCP_HOST]))
     cg.add(var.set_tcp_mode(config[CONF_TCP_MODE]))
+    cg.add(var.set_transport(config[CONF_TRANSPORT]))
     cg.add(var.set_tcp_port(config[CONF_TCP_PORT]))
     cg.add(var.set_baud(config[CONF_BAUD]))
     cg.add(var.set_data_bits(config[CONF_DATA_BITS]))
