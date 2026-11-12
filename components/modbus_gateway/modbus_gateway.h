@@ -3,6 +3,8 @@
 #pragma once
 #include <Arduino.h>
 #include <WiFi.h>
+#include <WiFiUdp.h>
+#include "mbap_codec.h"
 // ESP-IDF and Arduino WebServer both define HTTP_ANY; this component does not use it.
 #ifdef HTTP_ANY
 #undef HTTP_ANY
@@ -23,6 +25,7 @@ class ModbusGateway : public Component {
  public:
   void set_tcp_host(const std::string &v) { cfg_host_ = v; }
   void set_tcp_mode(const std::string &v) { tcp_mode_ = v; }
+  void set_transport(const std::string &v) { transport_ = v; }
   void set_tcp_port(uint16_t v) { cfg_port_ = v; }
   void set_baud(uint32_t v) { cfg_baud_ = v; }
   void set_data_bits(uint8_t v) { cfg_data_bits_ = v; }
@@ -70,17 +73,20 @@ class ModbusGateway : public Component {
     web_.onNotFound([this]() { web_.send(404, "text/plain", "Not found"); });
     web_.begin();
     start_tcp_server_();
+    start_udp_();
     ESP_LOGI("modbus_gateway", "Web UI started on port 80");
   }
 
   void loop() override {
     web_.handleClient();
     if (tcp_mode_ == "SERVER") {
-      handle_tcp_server_();
+      if (transport_ == "UDP") handle_udp_server_();
+      else handle_tcp_server_();
     } else if (tcp_mode_ == "CLIENT") {
       // Advance pending TCP transactions without waiting for the remote server.
       // This keeps the ESPHome loop responsive while a Modbus TCP reply is in flight.
-      process_client_transaction_();
+      if (transport_ == "UDP") process_udp_client_transaction_();
+      else process_client_transaction_();
       if (rtu_listening_) {
         bool rx_overflow = false;
         while (Serial1.available()) {
@@ -121,6 +127,10 @@ class ModbusGateway : public Component {
   std::string cfg_host_{"192.168.1.100"};
   std::string version_{"unknown"};  // Loaded from components/modbus_gateway/manifest.json
   std::string tcp_mode_{"CLIENT"};
+  std::string transport_{"TCP"};
+  WiFiUDP udp_;
+  IPAddress udp_target_ip_;
+  uint32_t udp_started_ms_{0};
   uint16_t cfg_port_{502};
   bool rtu_listening_{true};
   String manual_result_{"Aucune requête manuelle"};
@@ -537,6 +547,8 @@ class ModbusGateway : public Component {
     prefs_.begin("mbgateway", false);
     cfg_host_ = prefs_.getString("host", cfg_host_.c_str()).c_str();
     tcp_mode_ = prefs_.getString("mode", tcp_mode_.c_str()).c_str();
+    transport_ = prefs_.getString("transport", transport_.c_str()).c_str();
+    if (transport_ != "UDP") transport_ = "TCP";
     cfg_port_ = prefs_.getUShort("port", cfg_port_);
     tcp_timeout_ms_ = prefs_.getUInt("timeout", tcp_timeout_ms_);
     silent_on_timeout_ = prefs_.getBool("silentto", silent_on_timeout_);
@@ -723,6 +735,10 @@ class ModbusGateway : public Component {
     client_txn_.end_to_end_started_us = end_to_end_started_us;
     client_txn_.cacheable_read = cacheable_read;
 
+    if (transport_ == "UDP") {
+      start_udp_client_transaction_(unit_id, pdu);
+      return;
+    }
     uint32_t connect_started_us = micros();
     const String local_ip = local_wifi_ip_();
     const bool wifi_connected = wifi::global_wifi_component != nullptr &&
@@ -793,7 +809,9 @@ class ModbusGateway : public Component {
     const uint32_t first_byte_us = client_txn_.response_timing.first_delay_us(client_txn_.response_started_us);
     const uint32_t response_span_us = client_txn_.response_timing.span_us();
     add_log_("TCP RX", client_txn_.response_pdu.data(), client_txn_.response_pdu.size());
-    if (!tcp_persistent_) {
+    if (transport_ == "UDP") {
+      // UDP is connectionless.
+    } else if (!tcp_persistent_) {
       client_.stop();
     } else {
       const String target = String(cfg_host_.c_str()) + ":" + String(cfg_port_);
@@ -843,8 +861,8 @@ class ModbusGateway : public Component {
     const uint32_t first_byte_us = response_wait_started ?
         client_txn_.response_timing.first_delay_us(client_txn_.response_started_us) : 0;
     const uint32_t response_span_us = client_txn_.response_timing.span_us();
-    add_event_("TCP ERROR", reason);
-    if (client_) client_.stop();
+    add_event_(transport_ == "UDP" ? "UDP ERROR" : "TCP ERROR", reason);
+    if (transport_ != "UDP" && client_) client_.stop();
     if (client_txn_.request_pdu.empty()) {
       reset_client_transaction_();
       return;
@@ -1150,6 +1168,79 @@ class ModbusGateway : public Component {
     tcp_client_cursor_ = 0;
   }
 
+  // UDP uses one datagram per Modbus ADU. No retries: write requests must
+  // never be replayed automatically after an ambiguous timeout.
+  void start_udp_() {
+    udp_.stop();
+    if (transport_ != "UDP") return;
+    const uint16_t port = tcp_mode_ == "SERVER" ? cfg_port_ : 0;
+    if (!udp_.begin(port)) add_event_("UDP ERROR", "Unable to bind UDP socket.");
+  }
+
+  void start_udp_client_transaction_(uint8_t unit_id, const std::vector<uint8_t> &pdu) {
+    if (udp_.parsePacket() > 0) {
+      uint8_t stale[260];
+      while (udp_.available()) udp_.read(stale, sizeof(stale));
+    }
+    if (!udp_target_ip_.fromString(cfg_host_.c_str())) {
+      fail_client_transaction_("UDP target must be a valid IPv4 address.");
+      return;
+    }
+    uint8_t request[mbap::MAX_ADU_SIZE];
+    const uint16_t tid = transaction_id_++;
+    const size_t size = mbap::encode_adu(request, sizeof(request), tid, unit_id, pdu.data(), pdu.size());
+    if (!size || !udp_.beginPacket(udp_target_ip_, cfg_port_)) {
+      fail_client_transaction_("Cannot start UDP request.");
+      return;
+    }
+    const size_t written = udp_.write(request, size);
+    const bool sent = udp_.endPacket() == 1;
+    if (written != size || !sent) {
+      fail_client_transaction_("Cannot send UDP request.");
+      return;
+    }
+    client_txn_.transaction_id = tid;
+    client_txn_.response_started_us = micros();
+    client_txn_.response_stage_started_ms = millis();
+    client_txn_.state = ClientTxnState::WAIT_MBAP;
+    add_log_("UDP TX", request, size);
+  }
+
+  void process_udp_client_transaction_() {
+    if (client_txn_.state == ClientTxnState::IDLE) return;
+    // Bound processing so unrelated network traffic cannot starve ESPHome.
+    for (unsigned i = 0; i < 4; ++i) {
+      const int packet_size = udp_.parsePacket();
+      if (packet_size <= 0) break;
+      const IPAddress sender = udp_.remoteIP();
+      const uint16_t sender_port = udp_.remotePort();
+      uint8_t packet[mbap::MAX_ADU_SIZE];
+      const int read_size = packet_size <= int(sizeof(packet)) ?
+          udp_.read(packet, sizeof(packet)) : -1;
+      while (udp_.available()) udp_.read();
+      if (sender != udp_target_ip_ || sender_port != cfg_port_) continue;
+      mbap::Header header;
+      const uint8_t *response_pdu = nullptr;
+      size_t response_size = 0;
+      if (read_size < 0 || !mbap::decode_datagram(packet, size_t(read_size), header,
+                                                  response_pdu, response_size) ||
+          !mbap::matches_response(header, client_txn_.transaction_id, client_txn_.unit_id))
+        continue;
+      client_txn_.response_timing.mark(micros());
+      client_txn_.response_pdu.assign(response_pdu, response_pdu + response_size);
+      add_log_("UDP RX", packet, size_t(read_size));
+      finish_client_transaction_();
+      return;
+    }
+    if (millis() - client_txn_.response_stage_started_ms >= tcp_timeout_ms_)
+      fail_client_transaction_("Timeout waiting for Modbus UDP response.", true);
+  }
+
+  // UDP Server transport is not yet enabled: avoid claiming server readiness.
+  void handle_udp_server_() {
+    // Server request/response bridging will be integrated separately.
+  }
+
   void start_tcp_server_() {
     tcp_server_.stop();
     if (client_txn_.state != ClientTxnState::IDLE) {
@@ -1157,7 +1248,7 @@ class ModbusGateway : public Component {
     }
     client_.stop();
     stop_tcp_clients_();
-    if (tcp_mode_ == "SERVER") {
+    if (tcp_mode_ == "SERVER" && transport_ == "TCP") {
       tcp_server_.begin(cfg_port_);
       tcp_server_.setNoDelay(true);
       ESP_LOGI("modbus_gateway", "Modbus TCP server listening on port %u (max %u clients)", cfg_port_, unsigned(MAX_TCP_CLIENTS));
@@ -1506,7 +1597,11 @@ class ModbusGateway : public Component {
 <section><h2><img class="section-icon" src="/img/modbus-tcp.jpg" alt="">1. Modbus TCP</h2><div class="tcp-layout"><div class="tcp-col"><div><label>Mode</label><select name="mode" form="cfg">)HTML";
     s += "<option value=\"CLIENT\"" + String(tcp_mode_ == "CLIENT" ? " selected" : "") + ">Client TCP (RTU vers serveur)</option>";
     s += "<option value=\"SERVER\"" + String(tcp_mode_ == "SERVER" ? " selected" : "") + ">Serveur TCP (client TCP vers RTU)</option>";
-    s += R"HTML(</select></div>
+    s += R"HTML(</select></div><div><label>Transport</label><select name="transport" form="cfg"><option value="TCP")HTML";
+    if (transport_ == "TCP") s += " selected";
+    s += R"HTML(>TCP</option><option value="UDP")HTML";
+    if (transport_ == "UDP") s += " selected";
+    s += R"HTML(>UDP (Client experimental)</option></select></div>
 <div id="host_field"><label>Adresse IP du serveur Modbus TCP</label><input id="host_input" name="host" form="cfg" value=")HTML";
     s += cfg_host_.c_str();
     s += R"HTML("></div><div><label>Port Modbus TCP</label><input name="port" form="cfg" type="number" min="1" max="65535" value=")HTML";
@@ -1794,6 +1889,7 @@ updateListenState();refresh();setInterval(refresh,1500);
     int new_de = web_.hasArg("de") ? web_.arg("de").toInt() : de_re_gpio_;
     bool gpio_changed = new_tx != tx_gpio_ || new_rx != rx_gpio_ || new_de != de_re_gpio_;
     if (web_.hasArg("mode")) tcp_mode_ = web_.arg("mode").c_str();
+    if (web_.hasArg("transport")) transport_ = web_.arg("transport") == "UDP" ? "UDP" : "TCP";
     if (web_.hasArg("host")) cfg_host_ = web_.arg("host").substring(0,63).c_str();
     if (web_.hasArg("port")) { int v=web_.arg("port").toInt(); if(v>=1 && v<=65535) cfg_port_=uint16_t(v); }
     if (web_.hasArg("timeout")) { int v=web_.arg("timeout").toInt(); if(v>=1 && v<=30) tcp_timeout_ms_=uint32_t(v)*1000; }
@@ -1807,7 +1903,7 @@ updateListenState();refresh();setInterval(refresh,1500);
     if (new_de >= -1 && new_de <= 48) de_re_gpio_=new_de;
     manual_rtu_id_ = web_.arg("idmode") == "manual";
     if (web_.hasArg("rtuid")) { int v=web_.arg("rtuid").toInt(); if(v>=1 && v<=247) configured_rtu_id_=uint8_t(v); }
-    prefs_.putString("host", cfg_host_.c_str()); prefs_.putString("mode", tcp_mode_.c_str()); prefs_.putUShort("port", cfg_port_);
+    prefs_.putString("host", cfg_host_.c_str()); prefs_.putString("mode", tcp_mode_.c_str()); prefs_.putString("transport", transport_.c_str()); prefs_.putUShort("port", cfg_port_);
     prefs_.putUInt("timeout", tcp_timeout_ms_); prefs_.putBool("silentto", silent_on_timeout_); prefs_.putInt("tx", tx_gpio_);
     prefs_.putInt("rx", rx_gpio_); prefs_.putInt("de", de_re_gpio_);
     prefs_.putBool("idmanual", manual_rtu_id_); prefs_.putUChar("rtuid", configured_rtu_id_);
@@ -1836,7 +1932,7 @@ updateListenState();refresh();setInterval(refresh,1500);
       send_reboot_response_(web_.arg("lang") == "en");
       return;
     }
-    begin_uart_(); start_tcp_server_();
+    begin_uart_(); start_tcp_server_(); start_udp_();
     web_.sendHeader("Location", "/"); web_.send(303, "text/plain", "Configuration enregistrée");
   }
 };
