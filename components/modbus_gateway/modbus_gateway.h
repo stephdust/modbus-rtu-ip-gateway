@@ -549,7 +549,7 @@ class ModbusGateway : public Component {
     tcp_mode_ = prefs_.getString("mode", tcp_mode_.c_str()).c_str();
     transport_ = prefs_.getString("transport", transport_.c_str()).c_str();
     if (transport_ != "UDP") transport_ = "TCP";
-    if (tcp_mode_ == "SERVER" && transport_ == "UDP") transport_ = "TCP";
+
     cfg_port_ = prefs_.getUShort("port", cfg_port_);
     tcp_timeout_ms_ = prefs_.getUInt("timeout", tcp_timeout_ms_);
     silent_on_timeout_ = prefs_.getBool("silentto", silent_on_timeout_);
@@ -1237,9 +1237,101 @@ class ModbusGateway : public Component {
       fail_client_transaction_("Timeout waiting for Modbus UDP response.", true);
   }
 
-  // UDP Server transport is not yet enabled: avoid claiming server readiness.
+  // One UDP request is handled at a time on the shared half-duplex RS485 bus.
+  // The reply is always sent to the IP/port of the originating datagram.
   void handle_udp_server_() {
-    // Server request/response bridging will be integrated separately.
+    const int packet_size = udp_.parsePacket();
+    if (packet_size <= 0) return;
+    const IPAddress source_ip = udp_.remoteIP();
+    const uint16_t source_port = udp_.remotePort();
+    uint8_t packet[mbap::MAX_ADU_SIZE];
+    const int received = packet_size <= int(sizeof(packet)) ?
+        udp_.read(packet, sizeof(packet)) : -1;
+    while (udp_.available()) udp_.read();
+    mbap::Header header;
+    const uint8_t *pdu_data = nullptr;
+    size_t pdu_size = 0;
+    if (received < 0 || !mbap::decode_datagram(packet, size_t(received),
+                                               header, pdu_data, pdu_size)) {
+      add_event_("UDP ERROR", "Invalid Modbus UDP request discarded.");
+      return;
+    }
+    // Broadcast and reserved Unit IDs are not forwarded as ordinary unicast
+    // transactions. Manual mapping permits an explicitly configured RTU ID.
+    const uint8_t unit = manual_rtu_id_ ? configured_rtu_id_ : header.unit_id;
+    if (unit < 1 || unit > 247) {
+      add_event_("UDP ERROR", "Invalid RTU Unit ID.");
+      return;
+    }
+    const std::vector<uint8_t> pdu(pdu_data, pdu_data + pdu_size);
+    add_log_("UDP RX", packet, size_t(received));
+    uint16_t start_address = 0, quantity = 0;
+    const bool cacheable = is_cacheable_read_request_(pdu, start_address, quantity);
+    std::vector<uint8_t> reply;
+    uint32_t cache_age = 0;
+    if (cache_server_enabled_ && cacheable &&
+        cache_lookup_(CACHE_DIRECTION_SERVER, unit, pdu, reply, cache_age)) {
+      add_event_("CACHE HIT", String("UDP Server; Unit ID=") + String(unit) +
+                 "; age=" + String(cache_age) + " ms.");
+    } else {
+      // Drain residual serial bytes before transmitting a new RTU request.
+      while (Serial1.available()) Serial1.read();
+      std::vector<uint8_t> rtu;
+      rtu.reserve(pdu.size() + 3);
+      rtu.push_back(unit);
+      rtu.insert(rtu.end(), pdu.begin(), pdu.end());
+      const uint16_t crc = crc16_(rtu.data(), rtu.size());
+      rtu.push_back(uint8_t(crc));
+      rtu.push_back(uint8_t(crc >> 8));
+      if (de_re_gpio_ >= 0) digitalWrite(de_re_gpio_, HIGH);
+      delayMicroseconds(100);
+      add_log_("RTU TX", rtu.data(), rtu.size());
+      Serial1.write(rtu.data(), rtu.size());
+      Serial1.flush();
+      delayMicroseconds(100);
+      if (de_re_gpio_ >= 0) digitalWrite(de_re_gpio_, LOW);
+
+      uint8_t response[260];
+      uint32_t first_delay = 0, response_span = 0;
+      const size_t rlen = expected_rtu_response_(pdu[0], pdu.data(), pdu.size(),
+                                                 response, sizeof(response),
+                                                 first_delay, response_span);
+      const bool valid = rlen >= 5 && valid_crc_(response, rlen) &&
+                         response[0] == unit &&
+                         (response[1] == pdu[0] || response[1] == uint8_t(pdu[0] | 0x80));
+      if (valid) {
+        add_log_("RTU RX", response, rlen);
+        reply.assign(response + 1, response + rlen - 2);
+        if (reply[0] == pdu[0]) {
+          if (cacheable && cache_server_enabled_)
+            cache_store_(CACHE_DIRECTION_SERVER, unit, pdu, reply);
+          else if (!cacheable)
+            cache_invalidate_after_write_(CACHE_DIRECTION_SERVER, unit, pdu);
+        }
+      } else {
+        if (rlen >= 5) {
+          ++crc_error_count_;
+          add_log_("RTU RX", response, rlen);
+          add_event_("RTU ERROR", "Invalid RTU response or CRC in UDP Server mode.");
+        } else {
+          add_event_("RTU ERROR", "RTU response timeout in UDP Server mode.");
+        }
+        if (rlen < 5 && silent_on_timeout_) return;
+        reply = {uint8_t(pdu[0] | 0x80), 0x0B};
+      }
+    }
+    uint8_t outgoing[mbap::MAX_ADU_SIZE];
+    const size_t out_len = mbap::encode_adu(outgoing, sizeof(outgoing),
+                                            header.transaction_id, header.unit_id,
+                                            reply.data(), reply.size());
+    if (out_len && udp_.beginPacket(source_ip, source_port)) {
+      const size_t written = udp_.write(outgoing, out_len);
+      const bool sent = udp_.endPacket() == 1;
+      if (written == out_len && sent) add_log_("UDP TX", outgoing, out_len);
+      else add_event_("UDP ERROR", "UDP response write failed.");
+    } else {
+      add_event_("UDP ERROR", "Unable to start UDP response.");
+    }
   }
 
   void start_tcp_server_() {
@@ -1602,7 +1694,7 @@ class ModbusGateway : public Component {
     if (transport_ == "TCP") s += " selected";
     s += R"HTML(>TCP</option><option value="UDP")HTML";
     if (transport_ == "UDP") s += " selected";
-    s += R"HTML(>UDP (Client experimental)</option></select></div>
+    s += R"HTML(>UDP</option></select></div>
 <div id="host_field"><label>Adresse IP du serveur Modbus TCP</label><input id="host_input" name="host" form="cfg" value=")HTML";
     s += cfg_host_.c_str();
     s += R"HTML("></div><div><label>Port Modbus TCP</label><input name="port" form="cfg" type="number" min="1" max="65535" value=")HTML";
@@ -1891,11 +1983,7 @@ updateListenState();refresh();setInterval(refresh,1500);
     bool gpio_changed = new_tx != tx_gpio_ || new_rx != rx_gpio_ || new_de != de_re_gpio_;
     if (web_.hasArg("mode")) tcp_mode_ = web_.arg("mode").c_str();
     if (web_.hasArg("transport")) transport_ = web_.arg("transport") == "UDP" ? "UDP" : "TCP";
-    // Until UDP Server bridging is implemented, reject this unsupported pairing.
-    if (tcp_mode_ == "SERVER" && transport_ == "UDP") {
-      web_.send(400, "text/plain; charset=utf-8", "UDP Server is not implemented yet; configuration unchanged in NVS.");
-      return;
-    }
+
     if (web_.hasArg("host")) cfg_host_ = web_.arg("host").substring(0,63).c_str();
     if (web_.hasArg("port")) { int v=web_.arg("port").toInt(); if(v>=1 && v<=65535) cfg_port_=uint16_t(v); }
     if (web_.hasArg("timeout")) { int v=web_.arg("timeout").toInt(); if(v>=1 && v<=30) tcp_timeout_ms_=uint32_t(v)*1000; }
