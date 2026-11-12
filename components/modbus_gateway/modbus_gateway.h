@@ -549,6 +549,7 @@ class ModbusGateway : public Component {
     tcp_mode_ = prefs_.getString("mode", tcp_mode_.c_str()).c_str();
     transport_ = prefs_.getString("transport", transport_.c_str()).c_str();
     if (transport_ != "UDP") transport_ = "TCP";
+    if (tcp_mode_ == "SERVER" && transport_ == "UDP") transport_ = "TCP";
     cfg_port_ = prefs_.getUShort("port", cfg_port_);
     tcp_timeout_ms_ = prefs_.getUInt("timeout", tcp_timeout_ms_);
     silent_on_timeout_ = prefs_.getBool("silentto", silent_on_timeout_);
@@ -808,9 +809,9 @@ class ModbusGateway : public Component {
     const uint32_t response_us = micros() - client_txn_.response_started_us;
     const uint32_t first_byte_us = client_txn_.response_timing.first_delay_us(client_txn_.response_started_us);
     const uint32_t response_span_us = client_txn_.response_timing.span_us();
-    add_log_("TCP RX", client_txn_.response_pdu.data(), client_txn_.response_pdu.size());
+    if (transport_ == "TCP") add_log_("TCP RX", client_txn_.response_pdu.data(), client_txn_.response_pdu.size());
     if (transport_ == "UDP") {
-      // UDP is connectionless.
+      // UDP is connectionless; do not report TCP keepalive events.
     } else if (!tcp_persistent_) {
       client_.stop();
     } else {
@@ -1890,6 +1891,11 @@ updateListenState();refresh();setInterval(refresh,1500);
     bool gpio_changed = new_tx != tx_gpio_ || new_rx != rx_gpio_ || new_de != de_re_gpio_;
     if (web_.hasArg("mode")) tcp_mode_ = web_.arg("mode").c_str();
     if (web_.hasArg("transport")) transport_ = web_.arg("transport") == "UDP" ? "UDP" : "TCP";
+    // Until UDP Server bridging is implemented, reject this unsupported pairing.
+    if (tcp_mode_ == "SERVER" && transport_ == "UDP") {
+      web_.send(400, "text/plain; charset=utf-8", "UDP Server is not implemented yet; configuration unchanged in NVS.");
+      return;
+    }
     if (web_.hasArg("host")) cfg_host_ = web_.arg("host").substring(0,63).c_str();
     if (web_.hasArg("port")) { int v=web_.arg("port").toInt(); if(v>=1 && v<=65535) cfg_port_=uint16_t(v); }
     if (web_.hasArg("timeout")) { int v=web_.arg("timeout").toInt(); if(v>=1 && v<=30) tcp_timeout_ms_=uint32_t(v)*1000; }
