@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="Passerelle%20Modbus%20RTU%20vers%20TCP.png" alt="Modbus RTU to TCP Gateway" width="520" style="max-width: 100%; height: auto;" />
+  <img src="docs/assets/modbus-rtu-ip-gateway.svg" alt="Modbus RTU to IP TCP/UDP Gateway with RTU and IP caches" width="900" style="max-width: 100%; height: auto;" />
 </p>
 
-# Modbus RTU ↔ TCP Gateway for ESPHome
+# Modbus RTU ↔ IP (TCP/UDP) Gateway for ESPHome
 
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)](LICENSE)
 
-A Wi-Fi Modbus gateway built with **ESPHome**, **ESP32-S3** and the **Arduino framework**. It bridges a serial Modbus RTU / RS-485 bus and a Modbus TCP network, with a bilingual web interface for configuration and frame diagnostics.
+A Wi-Fi Modbus gateway built with **ESPHome**, **ESP32-S3** and the **Arduino framework**. It bridges a serial Modbus RTU / RS-485 bus and a Modbus IP (TCP/UDP) network, with a bilingual web interface for configuration and frame diagnostics.
 
 > **Reference hardware:** [Waveshare ESP32-S3-RS485-CAN](https://docs.waveshare.com/ESP32-S3-RS485-CAN). The project defaults match this board's RS-485 signals: TX GPIO17, RX GPIO18 and RS485 enable GPIO21. The project maintainer reports successful testing with this device, including four connected Modbus TCP clients.
 
