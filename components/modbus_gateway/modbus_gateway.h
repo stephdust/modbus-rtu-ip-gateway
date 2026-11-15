@@ -1715,6 +1715,53 @@ html[data-theme="dark"] pre{background:#080e1b;color:#dbeafe;border:1px solid #3
 .section-badge-ip .ip-protocol{font:800 7px/1.1 Arial,sans-serif;color:#003d68;white-space:nowrap}
 .section-badge-ip svg{width:100%;height:26px;flex-shrink:1}
 @media(max-width:560px){.section-badge-ip .ip-title{font-size:8px}.section-badge-ip .ip-protocol{font-size:6px}.section-badge-ip svg{height:23px}}
+
+/* v1.2.1 dashboard refresh: layout inspired by the documentation mock-up.
+   Keep the real header logo, form names, JS handlers, and diagnostic endpoints. */
+body{background:#0a1424;color:#e9f5ff;padding:18px 14px;font:14px/1.5 Arial,Helvetica,sans-serif}
+main{max-width:1240px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px 16px;align-items:start}
+main>.ui-toolbar,main>.brand,main>.apply-panel,main>.reboot-panel{grid-column:1/-1}
+main>.ui-toolbar{grid-row:1;margin:0}
+main>.brand{grid-row:2;margin:0;padding:12px 16px 17px;background:linear-gradient(135deg,#102b4d,#071728);border:1px solid #1e9bce;border-radius:16px;box-shadow:0 6px 24px #0005}
+.brand-logo{max-width:100%;height:auto;object-fit:contain}
+.brand-title{color:#e6f8ff;font-size:23px}.brand-sub,.brand-version{color:#8dbbd8}
+main>section{margin:0;padding:0 0 16px;background:linear-gradient(155deg,#142b48,#0c1b30);border:1px solid #32769c;border-radius:14px;box-shadow:0 5px 18px #0005;min-width:0;overflow:hidden}
+main>section:nth-of-type(1){grid-column:1;grid-row:3}
+main>section:nth-of-type(2){grid-column:2;grid-row:3}
+main>section:nth-of-type(3){grid-column:1;grid-row:4}
+main>section:nth-of-type(4){grid-column:2;grid-row:4 / span 3}
+main>section>h2{margin:0 0 16px;padding:10px 16px;background:linear-gradient(100deg,#204c7b,#173454);border-bottom:1px solid #387ba2;color:#f2fbff;font-size:18px;min-height:70px}
+main>section>div:not(.tcp-layout),main>section>p,main>section>pre{margin-left:16px;margin-right:16px}
+main>section>.tcp-layout{padding:0 16px}
+main>section>.grid{padding:0 16px;margin:0}
+main>section label{color:#c2def1;font-size:13px}
+main>section input,main>section select{background:#0a1a30;color:#f4faff;border:1px solid #557a9b;border-radius:8px;min-height:40px}
+main>section input:focus,main>section select:focus{border-color:#20c5f5;outline:2px solid #1277b5}
+main>section .muted{color:#a2c2da}
+main>section pre{background:#071121;color:#d2efff;border:1px solid #294e70;box-shadow:inset 0 2px 10px #0004}
+main>section #frames{min-height:280px;max-height:500px}
+main>.apply-panel,main>.reboot-panel{margin:0;padding:14px 18px;background:linear-gradient(120deg,#173555,#10233b);border:1px solid #32769c;color:#e8f5ff;border-radius:13px}
+main>.apply-panel{grid-row:7}
+main>.reboot-panel{grid-row:8}
+main>.apply-panel strong{color:#e8f5ff}
+main button,main .button-link{background:linear-gradient(180deg,#1688d0,#07578d);border:1px solid #31b3e8;box-shadow:0 2px 6px #0004}
+main>.apply-panel button{background:linear-gradient(180deg,#1cae66,#0c713d);border-color:#51d18a}
+main>.reboot-panel button{background:linear-gradient(180deg,#386589,#27415f);border-color:#648eaa}
+main .ui-toolbar button{border:1px solid #3b7fa7}
+html[data-theme="light"] body{background:#edf4fa;color:#1c3045}
+html[data-theme="light"] .brand,html[data-theme="light"] section,html[data-theme="light"] .apply-panel,html[data-theme="light"] .reboot-panel{background:#fff;border-color:#c7dbe9;box-shadow:0 3px 12px #0f172a12;color:#17202a}
+html[data-theme="light"] section>h2{background:linear-gradient(110deg,#e3f4ff,#f2f8ff);color:#124267;border-color:#c4e4f5}
+html[data-theme="light"] label{color:#475569}
+html[data-theme="light"] input,html[data-theme="light"] select{background:#fff;color:#17202a;border-color:#cbd5e1}
+html[data-theme="light"] .muted,html[data-theme="light"] .brand-sub,html[data-theme="light"] .brand-version{color:#64748b}
+html[data-theme="light"] .brand-title,html[data-theme="light"] .apply-panel strong{color:#12345a}
+html[data-theme="light"] pre{background:#101827;color:#dbeafe}
+@media(max-width:860px){
+ main{grid-template-columns:1fr}
+ main>.ui-toolbar,main>.brand,main>section:nth-of-type(1),main>section:nth-of-type(2),main>section:nth-of-type(3),main>section:nth-of-type(4),main>.apply-panel,main>.reboot-panel{grid-column:1;grid-row:auto}
+ main>section #frames{min-height:230px}
+}
+@media(max-width:560px){body{padding:10px 8px}main{gap:12px}main>section>h2{padding:9px 12px;font-size:16px}main>section>.tcp-layout,main>section>.grid{padding:0 12px}main>section>div:not(.tcp-layout),main>section>p,main>section>pre{margin-left:12px;margin-right:12px}}
 </style></head><body><main><nav class="ui-toolbar" aria-label="Affichage et langue"><button type="button" id="themeBtn" onclick="toggleTheme()" aria-label="Mode sombre" title="Mode sombre">☾</button><button type="button" id="langBtn" onclick="toggleLanguage()" aria-label="English" title="English">EN</button></nav><header class="brand">
 <img class="brand-logo" src="/img/logo.webp" alt="Logo passerelle Modbus"><div class="brand-version">Version )HTML";
     s += String(version_.c_str());
@@ -1750,7 +1797,7 @@ html[data-theme="dark"] pre{background:#080e1b;color:#dbeafe;border:1px solid #3
 <div id="cache_ttl_field"><label>Durée de validité du cache (ms)</label><input name="cache_ttl" form="cfg" type="number" min="50" max="10000" value=")HTML";
     s += String(cache_ttl_ms_);
     s += R"HTML("></div></div>
-<div class="muted tcp-note">Le cache concerne uniquement les lectures Modbus (fonctions 01 à 04). L’option affichée correspond au mode TCP sélectionné ; le réglage de l’autre mode est conservé. Les écritures réussies invalident les réponses mémorisées pour l’Unit ID concerné. 64 entrées maximum.</div>
+<div class="muted tcp-note">Le cache concerne uniquement les lectures Modbus (fonctions 01 à 04). L’option affichée correspond au mode Client/Serveur sélectionné ; le réglage de l’autre mode est conservé. Les écritures réussies invalident les réponses mémorisées pour l’Unit ID concerné. 64 entrées maximum.</div>
 </div></section>
 <section><h2><span class="section-badge section-badge-rtu" aria-hidden="true"><img src="/img/modbus-rtu.jpg" alt=""><small>RTU</small></span>2. Paramètres Modbus RTU</h2><div class="grid">
 <div><label>Baudrate</label><select name="baud" form="cfg">)HTML";
@@ -1777,7 +1824,7 @@ html[data-theme="dark"] pre{background:#080e1b;color:#dbeafe;border:1px solid #3
 <form id="cfg" method="POST" action="/save"><input type="hidden" id="form_lang" name="lang" value="fr"><div class="apply-panel"><div><strong>Enregistrement global</strong><div class="muted">Les paramètres des sections 1, 2 et 3 seront enregistrés ensemble.</div></div><button type="submit">Enregistrer / appliquer</button></div></form>
 <form id="rebootForm" method="POST" action="/reboot"><input type="hidden" id="reboot_lang" name="lang" value="fr"><div class="reboot-panel"><div><strong>Redémarrer la passerelle</strong><div class="muted">Redémarre l’ESP32 sans modifier les paramètres enregistrés.</div></div><button type="submit">Redémarrer</button></div></form>
 <section><h2><span class="section-badge section-badge-log" aria-hidden="true"><img src="/img/frame-diagnostics.jpg" alt=""><small>LOG</small></span>4. Debug des trames</h2>
-<p class="muted">RTU RX/TX et TCP TX/RX · rafraîchissement automatique toutes les 1,5 s</p>
+<p class="muted">RTU RX/TX et IP TCP/UDP TX/RX · rafraîchissement automatique toutes les 1,5 s</p>
 <p class="muted">Les tentatives de connexion TCP et les erreurs réseau sont également affichées dans cette fenêtre.</p>
 <p><button id="listenBtn" type="button" onclick="toggleListen()">Arrêter l’écoute RTU</button> <span id="listenState">Écoute RTU active</span></p>
 <div style="margin-top:14px"><label for="rtuFrame">Trame RTU à envoyer (hexadécimal, avec adresse et CRC, ex. 0B 03 00 00 00 01 84 A0)</label>
@@ -1793,14 +1840,14 @@ const translations={
 'Mode':'Mode','Client IP (RTU vers serveur)':'TCP client (RTU to server)','Serveur IP (client IP vers RTU)':'TCP server (TCP client to RTU)',
 'Connexion TCP persistante':'Persistent TCP connection','Garde la connexion ouverte entre les requêtes RTU pour réduire la latence (mode Client TCP uniquement).':'Keep the connection open between RTU requests to reduce latency (TCP Client mode only).','Redémarrer la passerelle':'Restart gateway','Redémarrer':'Restart','Redémarre l’ESP32 sans modifier les paramètres enregistrés.':'Restart the ESP32 without changing saved settings.',
 'Adresse IP du serveur Modbus':'Modbus server IP address','Port Modbus IP':'Modbus IP port','Timeout réseau (secondes)':'Network timeout (seconds)','Comportement en cas de timeout distant':'Behavior when the remote device times out','Standard : envoyer une exception Modbus':'Standard: send a Modbus exception','Silencieux : ne pas répondre':'Silent: do not reply','S’applique aux modes Client et Serveur. En mode silencieux, seule l’absence de réponse distante déclenche le silence ; les erreurs de trame CRC restent signalées.':'Applies to both TCP modes. Silent mode is used only when the remote device does not respond; CRC frame errors are still reported.',
-'Activer le cache en mode Client IP (RTU → IP)':'Enable cache in TCP Client mode (RTU → TCP)','Activer le cache en mode Serveur IP (IP → RTU)':'Enable cache in TCP Server mode (TCP → RTU)','Durée de validité du cache (ms)':'Cache time-to-live (ms)','Le cache concerne uniquement les lectures Modbus (fonctions 01 à 04). L’option affichée correspond au mode TCP sélectionné ; le réglage de l’autre mode est conservé. Les écritures réussies invalident les réponses mémorisées pour l’Unit ID concerné. 64 entrées maximum.':'The cache stores only Modbus read requests (functions 01 to 04). Only the option for the selected TCP mode is shown; the other mode’s setting is preserved. Successful writes invalidate cached responses for the affected Unit ID. Maximum 64 entries.',
+'Activer le cache en mode Client IP (RTU → IP)':'Enable cache in TCP Client mode (RTU → TCP)','Activer le cache en mode Serveur IP (IP → RTU)':'Enable cache in TCP Server mode (TCP → RTU)','Durée de validité du cache (ms)':'Cache time-to-live (ms)','Le cache concerne uniquement les lectures Modbus (fonctions 01 à 04). L’option affichée correspond au mode TCP sélectionné ; le réglage de l’autre mode est conservé. Les écritures réussies invalident les réponses mémorisées pour l’Unit ID concerné. 64 entrées maximum.':'The cache stores only Modbus read requests (functions 01 to 04). Only the option for the selected Client/Server mode is shown; the other mode’s setting is preserved. Successful writes invalidate cached responses for the affected Unit ID. Maximum 64 entries.',
 'CACHE TROUVÉ':'CACHE HIT','CACHE ABSENT':'CACHE MISS','CACHE ENREGISTRÉ':'CACHE STORE','CACHE INVALIDÉ':'CACHE INVALIDATE','Mode Client':'Client mode','Mode Serveur':'Server mode','Fonction=':'Function=','Adresse=':'Address=','Quantité=':'Quantity=','Âge=':'Age=','Entrées=':'Entries=','Opération réussie hors lecture.':'Successful non-read operation.',
 'Baudrate':'Baud rate','Data bits':'Data bits','Parity':'Parity','Stop bits':'Stop bits',
 'GPIO TX (-1 = automatique)':'TX GPIO (-1 = automatic)','GPIO RX (-1 = automatique)':'RX GPIO (-1 = automatic)','GPIO DE/RE/EN (-1 = automatique)':'DE/RE/EN GPIO (-1 = automatic)',
 'Identifiant Modbus RTU':'Modbus RTU device ID','Automatique (adresse reçue)':'Automatic (received address)','Manuel':'Manual','ID RTU manuel (1–247)':'Manual RTU ID (1–247)',
 'Enregistrer / appliquer':'Save / apply','Enregistrement global':'Apply all settings','Les paramètres des sections 1, 2 et 3 seront enregistrés ensemble.':'Settings in sections 1, 2 and 3 will be saved together.','-1 = sélection automatique de la broche. Les paramètres sont enregistrés en mémoire. Toute modification des GPIO redémarre l’ESP32.':'-1 = automatic pin selection. Settings are stored in memory. Any GPIO change restarts the ESP32.',
 'Paramètres Modbus RTU':'Modbus RTU settings','3. Configuration':'3. Configuration','4. Debug des trames':'4. Frame diagnostics',
-'RTU RX/TX et TCP TX/RX · rafraîchissement automatique toutes les 1,5 s':'RTU RX/TX and TCP TX/RX · automatic refresh every 1.5 s',
+'RTU RX/TX et IP TCP/UDP TX/RX · rafraîchissement automatique toutes les 1,5 s':'RTU RX/TX and TCP TX/RX · automatic refresh every 1.5 s',
 'Les tentatives de connexion TCP et les erreurs réseau sont également affichées dans cette fenêtre.':'TCP connection attempts and network errors are also displayed in this window.',
 'Arrêter l’écoute RTU':'Stop RTU listening','Reprendre l’écoute RTU':'Resume RTU listening','Écoute RTU active':'RTU listening','Écoute RTU suspendue':'RTU listening paused','Erreur de commande':'Command error',
 'Trame RTU à envoyer (hexadécimal, avec adresse et CRC, ex. 0B 03 00 00 00 01 84 A0)':'RTU frame to send (hexadecimal, including address and CRC, e.g. 0B 03 00 00 00 01 84 A0)',
@@ -1874,7 +1921,7 @@ function setTheme(theme){
   try{localStorage.setItem('modbus_theme',dark?'dark':'light');}catch(e){}
 }
 function toggleTheme(){setTheme(document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark');}
-try{setTheme(localStorage.getItem('modbus_theme')==='dark'?'dark':'light');}catch(e){setTheme('light');}
+try{setTheme(localStorage.getItem('modbus_theme')==='light'?'light':'dark');}catch(e){setTheme('dark');}
 function toggleLanguage(){currentLanguage=currentLanguage==='fr'?'en':'fr';document.getElementById('form_lang').value=currentLanguage;document.getElementById('reboot_lang').value=currentLanguage;applyLanguage();setTheme(document.documentElement.getAttribute('data-theme'));}
 function toggleRtuId(){const isServer=document.querySelector('select[name=mode]').value==='SERVER';document.getElementById('rtu_id_mode_field').style.display=isServer?'block':'none';document.getElementById('rtu_id_manual_field').style.display=(isServer&&document.querySelector('select[name=idmode]').value==='manual')?'block':'none';}document.querySelector('select[name=idmode]').addEventListener('change',toggleRtuId);document.querySelector('select[name=mode]').addEventListener('change',toggleRtuId);toggleRtuId();
 function crc16Modbus(bytes){let crc=0xFFFF;for(const b of bytes){crc^=b;for(let i=0;i<8;i++)crc=(crc&1)?((crc>>>1)^0xA001):(crc>>>1);}return crc&0xFFFF;}
