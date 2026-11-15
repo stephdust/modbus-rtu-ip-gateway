@@ -1694,6 +1694,11 @@ html[data-theme="dark"] .muted,html[data-theme="dark"] .brand-sub,html[data-them
 html[data-theme="dark"] input,html[data-theme="dark"] select,html[data-theme="dark"] textarea{background:#0f172a;color:#f1f5f9;border-color:#475569}
 html[data-theme="dark"] pre{background:#080e1b;color:#dbeafe;border:1px solid #334155}
 .ui-toolbar{display:flex;justify-content:flex-end;align-items:center;gap:6px;margin:0 0 6px}.ui-toolbar button{float:none!important;margin:0!important;padding:5px 9px;min-height:29px;min-width:37px;font-size:12px;line-height:1.1;border-radius:7px;box-shadow:none}.ui-toolbar #themeBtn{background:#334155;color:#fff}.ui-toolbar #themeBtn:hover{background:#475569}.ui-toolbar #langBtn{background:#1769aa;color:#fff}.ui-toolbar #langBtn:hover{background:#125487}
+
+/* Full-width banner: the toolbar sits above it and never reduces logo width. */
+.brand{width:100%;max-width:none;padding:12px 10px 18px;clear:both}
+.brand-logo{display:block;width:100%;max-width:none;height:auto;object-fit:contain}
+@media(max-width:560px){.brand{padding:8px 5px 14px}.brand-logo{width:100%;max-width:none}}
 </style></head><body><main><nav class="ui-toolbar" aria-label="Affichage et langue"><button type="button" id="themeBtn" onclick="toggleTheme()" aria-label="Mode sombre" title="Mode sombre">☾</button><button type="button" id="langBtn" onclick="toggleLanguage()" aria-label="English" title="English">EN</button></nav><header class="brand">
 <img class="brand-logo" src="/img/logo.webp" alt="Logo passerelle Modbus"><div class="brand-version">Version )HTML";
     s += String(version_.c_str());
