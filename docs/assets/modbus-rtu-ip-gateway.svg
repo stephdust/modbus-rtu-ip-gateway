@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="300" viewBox="0 0 1100 300" role="img" aria-labelledby="title desc">
+<title id="title">Modbus Gateway RTU ↔ IP</title><desc id="desc">ESP32-S3 bridge connecting Modbus RTU RS485 and Modbus IP TCP/UDP, with cache on both sides</desc>
+<defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#f2fbff"/><stop offset="1" stop-color="#bdeeff"/></linearGradient><linearGradient id="blue" x2="0" y2="1"><stop stop-color="#058ad0"/><stop offset="1" stop-color="#003b70"/></linearGradient></defs>
+<rect x="4" y="4" width="1092" height="292" rx="28" fill="url(#bg)" stroke="#00bdeb" stroke-width="7"/>
+<rect x="32" y="42" width="290" height="162" rx="20" fill="url(#blue)" stroke="#2cd5ff" stroke-width="4"/>
+<text x="177" y="91" text-anchor="middle" fill="white" font-family="Arial,sans-serif" font-size="29" font-weight="bold">Modbus RTU</text>
+<text x="177" y="131" text-anchor="middle" fill="#a7edff" font-family="Arial,sans-serif" font-size="24" font-weight="bold">RS485</text>
+<path d="M80 165h194m-194 0v15m97-15v15m97-15v15" stroke="#6be7ff" stroke-width="6" fill="none" stroke-linecap="round"/>
+<rect x="70" y="211" width="214" height="38" rx="14" fill="#e5faff" stroke="#00a6d9" stroke-width="3"/><text x="177" y="237" text-anchor="middle" font-family="Arial,sans-serif" font-size="21" font-weight="bold" fill="#004a7c">CACHE RTU</text>
+<path d="M329 126h70m-16-15 16 15-16 15" fill="none" stroke="#008bc1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="410" y="46" width="280" height="190" rx="24" fill="#073f6f" stroke="#00c9f4" stroke-width="5"/>
+<rect x="462" y="66" width="176" height="122" rx="13" fill="#102d48" stroke="#80e9ff" stroke-width="3"/>
+<text x="550" y="113" text-anchor="middle" font-family="Arial,sans-serif" font-size="35" font-weight="bold" fill="#ffffff">ESP32-S3</text>
+<text x="550" y="154" text-anchor="middle" font-family="Arial,sans-serif" font-size="22" fill="#7ee5ff">GATEWAY</text>
+<g stroke="#67ddff" stroke-width="5"><path d="M434 78h-20m20 30h-20m20 30h-20m20 30h-20m252-90h20m-20 30h20m-20 30h20m-20 30h20"/></g>
+<path d="M700 126h70m-16-15 16 15-16 15" fill="none" stroke="#008bc1" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="780" y="42" width="288" height="162" rx="20" fill="url(#blue)" stroke="#2cd5ff" stroke-width="4"/>
+<text x="924" y="91" text-anchor="middle" fill="white" font-family="Arial,sans-serif" font-size="29" font-weight="bold">Modbus IP</text>
+<text x="924" y="131" text-anchor="middle" fill="#a7edff" font-family="Arial,sans-serif" font-size="24" font-weight="bold">TCP / UDP</text>
+<path d="M830 169h188m-150-16v32m56-32v32m56-32v32" stroke="#6be7ff" stroke-width="6" stroke-linecap="round"/>
+<rect x="816" y="211" width="216" height="38" rx="14" fill="#e5faff" stroke="#00a6d9" stroke-width="3"/><text x="924" y="237" text-anchor="middle" font-family="Arial,sans-serif" font-size="21" font-weight="bold" fill="#004a7c">CACHE IP</text>
+<text x="550" y="277" text-anchor="middle" font-family="Arial,sans-serif" font-size="24" font-weight="bold" fill="#004a7c">Modbus Gateway RTU ↔ IP</text></svg>
