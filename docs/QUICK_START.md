@@ -166,6 +166,9 @@ The diagnostics also report per-stage timing and receive-byte observations. Thes
 
 ## TCP / UDP configuration (v1.2.1)
 
+**Required compatibility check:** Configure the gateway's IP transport to match the remote Modbus IP endpoint: **TCP Client ↔ TCP Server** or **UDP Client ↔ UDP Server**. TCP and UDP are different transport protocols, even when both endpoints use port **502**. A TCP client cannot exchange Modbus requests with a UDP-only server, and vice versa. For the gateway's **IP Server** mode, the external IP client must likewise select the matching TCP or UDP transport.
+
+
 In Section **1. Modbus IP**, choose **Transport = TCP** or **UDP** and **Mode = Client** or **Server**. All four combinations are supported:
 
 | Selection | Gateway behavior |
