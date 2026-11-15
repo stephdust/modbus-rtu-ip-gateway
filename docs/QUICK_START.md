@@ -91,15 +91,11 @@ The setting is saved across restarts. It does not suppress CRC errors or other t
 The cache control follows the selected mode: **TCP Client** shows only the Client cache switch, while **TCP Server** shows only the Server cache switch. Switching modes changes the visible option immediately. The two settings are independent: saving one mode does not overwrite the other mode's hidden setting. The shared TTL is configurable from 50 to 10,000 ms (default 500 ms). Both caches are disabled by default. See [Cache behavior and configuration](CACHE.md) before enabling caching on a process where stale values could be unsafe.
 
 
-### Interface Web — aperçu illustratif
+### Interface Web — version 1.2.1
 
-Les images ci-dessous sont des simulations de la mise en page de la version 1.1.13. Les valeurs et les trames affichées sont des exemples, pas des captures d’une passerelle connectée.
+Les anciennes captures de la version 1.1.13 ont été retirées : elles ne reflètent pas la sélection **TCP/UDP**, les quatre modes **Client/Serveur**, les nouveaux logos ni les champs conditionnels du cache. De nouvelles captures de l'interface réelle v1.2.1 sont à ajouter.
 
-![Paramètres Modbus TCP, RTU et GPIO](assets/web-interface-settings-v1.1.13.png)
-
-![Mode Serveur TCP et sélection de l’identifiant RTU](assets/web-interface-server-mode-v1.1.13.png)
-
-![Debug des trames RTU/TCP](assets/frame-diagnostics-v1.1.13.png)
+Dans la section **Modbus IP**, sélectionner le transport TCP ou UDP et le mode Client ou Serveur. L'option de connexion TCP persistante n'apparaît qu'en TCP Client. Le champ de durée de validité du cache n'apparaît que si le cache du mode actif est coché. Les paramètres RTU, GPIO et diagnostics restent accessibles dans leurs sections respectives.
 
 ## 6. Configure Section 2 — Modbus RTU
 
