@@ -66,35 +66,11 @@ See [Cache behavior and configuration](docs/CACHE.md) for details. The cache opt
 
 ![Both gateway topologies: TCP Client / RTU Slave and TCP Server / RTU Master](docs/assets/system-architecture.png)
 
-## Screenshots
+## Web interface (v1.2.1)
 
-### Configuration page
+**Current screenshots pending.** Earlier screenshots from v1.1.13 have been removed because they do not show the current TCP/UDP interface. The current firmware offers **Modbus IP** transport selection (TCP or UDP), **Client/Server** mode, mode-specific cache controls with a conditional TTL input, RTU configuration, GPIO settings, and frame diagnostics. The **persistent TCP connection** checkbox appears only in **TCP Client**. See [Quick start](docs/QUICK_START.md) for the current controls.
 
-![Web interface — TCP, RTU and GPIO settings](docs/assets/web-interface-settings-v1.1.13.png)
-
-### TCP Server mode and RTU Unit ID
-
-The RTU address selector is shown in TCP Server mode. This illustration shows the automatic mapping from the incoming TCP Unit ID to the RTU slave address.
-
-![TCP Server mode — RTU Unit ID selection](docs/assets/web-interface-server-mode-v1.1.13.png)
-
-### Mode-specific response cache controls
-
-In TCP Client mode, only the Client cache switch is shown:
-
-![TCP Client mode cache setting](docs/assets/cache-mode-client.png)
-
-In TCP Server mode, only the Server cache switch is shown:
-
-![TCP Server mode cache setting](docs/assets/cache-mode-server.png)
-
-The inactive mode's setting remains saved when the configuration is applied.
-
-### Frame diagnostics
-
-![Web interface — frame diagnostics and text export](docs/assets/frame-diagnostics-v1.1.13.png)
-
-*These are rendered documentation previews built from the project's current page layout and image assets. Values and example frames are illustrative, not a live capture from a connected device.*
+To add accurate screenshots, capture the actual v1.2.1 web page after flashing the firmware; do not reuse v1.1.13 illustrations.
 
 ## Hardware
 
