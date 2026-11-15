@@ -55,7 +55,7 @@ The web UI listens on TCP port **80**. The Modbus TCP listener/client port is a 
 
 The TCP endpoint and RTU serial parameters are intentionally **not hard-coded in the YAML**. The component supplies first-boot defaults: TCP Client mode, remote host `192.168.1.100`, TCP port `502`, and RTU `9600 8N1`. These values can be changed in the web interface. Press **Save / apply** to store them in ESP32 non-volatile storage (NVS); saved values are loaded at every subsequent boot and take precedence over the component defaults.
 
-## 5. Configure Section 1 — Modbus TCP
+## 5. Configure Section 1 — Modbus IP (TCP / UDP)
 
 Select one operating mode:
 
@@ -91,11 +91,27 @@ The setting is saved across restarts. It does not suppress CRC errors or other t
 The cache control follows the selected mode: **TCP Client** shows only the Client cache switch, while **TCP Server** shows only the Server cache switch. Switching modes changes the visible option immediately. The two settings are independent: saving one mode does not overwrite the other mode's hidden setting. The shared TTL is configurable from 50 to 10,000 ms (default 500 ms). Both caches are disabled by default. See [Cache behavior and configuration](CACHE.md) before enabling caching on a process where stale values could be unsafe.
 
 
-### Interface Web — version 1.2.1
+### Aperçus de l'interface Web v1.2.1 — simulations
 
-Les anciennes captures de la version 1.1.13 ont été retirées : elles ne reflètent pas la sélection **TCP/UDP**, les quatre modes **Client/Serveur**, les nouveaux logos ni les champs conditionnels du cache. De nouvelles captures de l'interface réelle v1.2.1 sont à ajouter.
+> **Illustrations simulées, et non captures réelles de l'ESP32.** Elles reprennent l'organisation actuelle (logo, barre d'actions, paramètres et tableau de connexions), avec des adresses et états d'exemple. Les vrais journaux de trames, compteurs et connexions dépendent du matériel.
 
-Dans la section **Modbus IP**, sélectionner le transport TCP ou UDP et le mode Client ou Serveur. L'option de connexion TCP persistante n'apparaît qu'en TCP Client. Le champ de durée de validité du cache n'apparaît que si le cache du mode actif est coché. Les paramètres RTU, GPIO et diagnostics restent accessibles dans leurs sections respectives.
+**TCP Client (RTU → IP)**
+
+![Simulation de l'interface tcp-client v1.2.1](assets/ui-v1.2.1-tcp-client-simulation.svg)
+
+**TCP Serveur (IP → RTU)**
+
+![Simulation de l'interface tcp-server v1.2.1](assets/ui-v1.2.1-tcp-server-simulation.svg)
+
+**UDP Client (RTU → IP)**
+
+![Simulation de l'interface udp-client v1.2.1](assets/ui-v1.2.1-udp-client-simulation.svg)
+
+**UDP Serveur (IP → RTU)**
+
+![Simulation de l'interface udp-server v1.2.1](assets/ui-v1.2.1-udp-server-simulation.svg)
+
+Le panneau de diagnostics des trames, situé sous les paramètres, distingue **RTU RAW** (cyan), **TCP/UDP RAW** (orange) et les mesures **TIMING** (violet). La barre d'actions sous le logo regroupe le thème, la langue, **Enregistrer / appliquer**, **Redémarrer** et **Actualiser**.
 
 ## 6. Configure Section 2 — Modbus RTU
 
