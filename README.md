@@ -16,23 +16,32 @@ A Wi-Fi Modbus gateway built with **ESPHome**, **ESP32-S3** and the **Arduino fr
 
 The development interface labels the network section **Modbus IP**, offers a TCP/UDP selector, and includes four harmonized blue/cyan section thumbnails matching the RTU ↔ IP header artwork. The IP thumbnail explicitly shows **TCP / UDP**. The **Persistent TCP connection** control is displayed only for **TCP Client**; it is hidden for TCP Server and both UDP modes, and the stored TCP setting is preserved while UDP is selected.
 
+## Transport and operating modes (v1.2.1)
+
+| Transport | Client mode: RTU → IP | Server mode: IP → RTU |
+|---|---|---|
+| **TCP** | RTU requests forwarded over a TCP connection to the remote Modbus server | Accepts Modbus TCP requests (up to four simultaneous TCP connections) and forwards them to RS-485 |
+| **UDP** | RTU requests sent as MBAP datagrams to the configured IPv4 endpoint; responses are matched to the request | Receives MBAP datagrams, queries the RS-485 bus and replies to the originating IP/port |
+
+Choose **Transport: TCP / UDP** and **Mode: Client / Server** in Section 1 **Modbus IP**. TCP connection persistence is offered **only in TCP Client**. Client and Server read-cache switches work with either transport; the shared cache TTL field is shown only when the selected mode's cache is enabled. UDP has no connection persistence and no delivery guarantee. See [Quick start](docs/QUICK_START.md), [Protocol](docs/PROTOCOL.md) and [TCP/UDP behavior](docs/TCP_UDP_DEVELOPMENT.md).
+
 ## Response cache
 
-The gateway provides two independent optional response caches, one for each operating mode:
+The gateway provides two independent optional response caches, one for each **Client/Server direction**, shared across the selected TCP or UDP transport:
 
 - **TCP Client mode (RTU → TCP):** repeated RTU read requests can be answered from the last valid Modbus TCP response.
 - **TCP Server mode (TCP → RTU):** repeated TCP read requests can be answered from the last valid RTU response without querying the RS-485 bus again.
 
 Both caches are disabled by default. Each can be enabled separately in the Web UI. A shared time-to-live (TTL) can be configured from 50 to 10,000 ms (default 500 ms). The cache has 64 entries and only stores valid read functions 01–04. Write and read/write operations are never cached; successful writes invalidate only overlapping cached ranges in the corresponding writable data space. Unknown or malformed write ranges trigger a conservative invalidation of all cached reads for that Unit ID and direction. Cache hits do not extend the TTL. Cached values may therefore be stale by up to the configured TTL; keep the cache disabled when every read must return the freshest device value.
 
-See [Cache behavior and configuration](docs/CACHE.md) for details. The cache option displayed in Section 1 follows the selected TCP mode; the other mode's setting remains saved in NVS.
+See [Cache behavior and configuration](docs/CACHE.md) for details. The cache option displayed in Section 1 follows the selected Client/Server mode; the other mode's setting remains saved in NVS.
 
 ## Features
 
 - Per-transaction latency diagnostics in both TCP Client and TCP Server modes.
 - Non-blocking TCP response reception in normal TCP Client mode: the ESPHome loop keeps servicing the Web UI and other tasks while the remote Modbus TCP server prepares its response.
 
-- **Two operating modes**
+- **Four transport/mode combinations** (TCP Client, TCP Server, UDP Client, UDP Server); the TCP-specific details below describe the TCP variants:
   - **TCP Client / RTU Slave:** an external RTU master polls the ESP32; the gateway forwards each request to a configured remote Modbus TCP server.
   - **TCP Server / RTU Master:** Modbus TCP masters connect to the ESP32; the gateway forwards their requests to downstream RTU slave devices.
 - **Up to four concurrent TCP master connections** in TCP Server mode.
@@ -136,7 +145,7 @@ See [Quick start and configuration](docs/QUICK_START.md) for full instructions.
 | Concurrent inbound TCP clients | 4 maximum |
 | Web interface | HTTP port 80 |
 
-## Operating modes at a glance
+## Address mapping at a glance
 
 | Mode | Data direction | RTU device address behaviour |
 |---|---|---|
@@ -144,7 +153,7 @@ See [Quick start and configuration](docs/QUICK_START.md) for full instructions.
 | TCP Server — Automatic ID | TCP → RTU | The incoming TCP Unit ID becomes the RTU slave address. |
 | TCP Server — Manual ID | TCP → RTU | The configured RTU ID (1–247) is used on RS-485; the TCP response still carries the original incoming Unit ID. |
 
-Only TCP Server mode accepts inbound Modbus TCP masters. Up to four clients can keep their TCP sessions open at once. Their requests are not executed in parallel on RS-485: one complete RTU transaction is processed at a time.
+TCP Server accepts inbound Modbus TCP masters; UDP Server accepts MBAP datagrams from UDP clients. Up to four clients can keep their TCP sessions open at once. Their requests are not executed in parallel on RS-485: one complete RTU transaction is processed at a time.
 
 ## Documentation
 
