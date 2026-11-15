@@ -6,14 +6,16 @@ The gateway includes an optional response cache for each operating mode. The cac
 
 The Web UI exposes two independent settings in **1. Modbus IP**. To keep the page unambiguous, it displays only the setting that belongs to the currently selected Client/Server mode:
 
-- **IP Client selected:** the UI shows **Enable cache in TCP Client mode (RTU → TCP)**, which reuses a previously received Modbus TCP read response for a matching RTU request.
-- **IP Server selected:** the UI shows **Enable cache in TCP Server mode (TCP → RTU)**, which reuses a previously received RTU read response for a matching TCP request.
+- **IP Client selected:** the UI shows **Enable cache in Client IP mode (RTU → IP)**, which reuses a previously received Modbus TCP read response for a matching RTU request.
+- **IP Server selected:** the UI shows **Enable cache in Server IP mode (IP → RTU)**, which reuses a previously received RTU read response for a matching TCP request.
 
-Both settings are independent and disabled by default. Changing the selected TCP mode updates the visible switch immediately without reloading the page. Saving in one mode updates only that mode’s cache setting; the hidden mode’s setting is preserved in NVS and appears again when that mode is selected.
+Both settings are independent and disabled by default. Changing the selected Client/Server mode updates the visible switch immediately without reloading the page. Saving in one mode updates only that mode’s cache setting; the hidden mode’s setting is preserved in NVS and appears again when that mode is selected.
 
 ## Web UI behavior (v1.2.1)
 
-The outdated cache screenshots from v1.1.13 have been removed. In **TCP Client** or **UDP Client**, only the **Client cache** switch is shown; in **TCP Server** or **UDP Server**, only the **Server cache** switch is shown. The inactive direction's saved setting is preserved. The **cache TTL** input is visible only while the selected direction's cache is checked, and hidden otherwise. New screenshots must be taken from the running v1.2.1 interface.
+In **TCP Client** or **UDP Client**, only the **Client cache** switch is shown; in **TCP Server** or **UDP Server**, only the **Server cache** switch is shown. The inactive direction's saved setting is preserved. The **cache TTL** input appears only when the selected direction's cache is enabled.
+
+For current UI simulations (not real screenshots), see the [four-mode interface gallery](QUICK_START.md#aperçus-de-linterface-web-v121--simulations).
 
 ## Time-to-live and capacity
 
