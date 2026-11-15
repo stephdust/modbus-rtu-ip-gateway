@@ -3,6 +3,8 @@
 #pragma once
 #include <Arduino.h>
 #include <WiFi.h>
+#include <WiFiUdp.h>
+#include "mbap_codec.h"
 // ESP-IDF and Arduino WebServer both define HTTP_ANY; this component does not use it.
 #ifdef HTTP_ANY
 #undef HTTP_ANY
@@ -23,6 +25,7 @@ class ModbusGateway : public Component {
  public:
   void set_tcp_host(const std::string &v) { cfg_host_ = v; }
   void set_tcp_mode(const std::string &v) { tcp_mode_ = v; }
+  void set_transport(const std::string &v) { transport_ = v; }
   void set_tcp_port(uint16_t v) { cfg_port_ = v; }
   void set_baud(uint32_t v) { cfg_baud_ = v; }
   void set_data_bits(uint8_t v) { cfg_data_bits_ = v; }
@@ -70,17 +73,20 @@ class ModbusGateway : public Component {
     web_.onNotFound([this]() { web_.send(404, "text/plain", "Not found"); });
     web_.begin();
     start_tcp_server_();
+    start_udp_();
     ESP_LOGI("modbus_gateway", "Web UI started on port 80");
   }
 
   void loop() override {
     web_.handleClient();
     if (tcp_mode_ == "SERVER") {
-      handle_tcp_server_();
+      if (transport_ == "UDP") handle_udp_server_();
+      else handle_tcp_server_();
     } else if (tcp_mode_ == "CLIENT") {
       // Advance pending TCP transactions without waiting for the remote server.
       // This keeps the ESPHome loop responsive while a Modbus TCP reply is in flight.
-      process_client_transaction_();
+      if (transport_ == "UDP") process_udp_client_transaction_();
+      else process_client_transaction_();
       if (rtu_listening_) {
         bool rx_overflow = false;
         while (Serial1.available()) {
@@ -121,6 +127,10 @@ class ModbusGateway : public Component {
   std::string cfg_host_{"192.168.1.100"};
   std::string version_{"unknown"};  // Loaded from components/modbus_gateway/manifest.json
   std::string tcp_mode_{"CLIENT"};
+  std::string transport_{"TCP"};
+  WiFiUDP udp_;
+  IPAddress udp_target_ip_;
+  uint32_t udp_started_ms_{0};
   uint16_t cfg_port_{502};
   bool rtu_listening_{true};
   String manual_result_{"Aucune requête manuelle"};
@@ -537,6 +547,9 @@ class ModbusGateway : public Component {
     prefs_.begin("mbgateway", false);
     cfg_host_ = prefs_.getString("host", cfg_host_.c_str()).c_str();
     tcp_mode_ = prefs_.getString("mode", tcp_mode_.c_str()).c_str();
+    transport_ = prefs_.getString("transport", transport_.c_str()).c_str();
+    if (transport_ != "UDP") transport_ = "TCP";
+
     cfg_port_ = prefs_.getUShort("port", cfg_port_);
     tcp_timeout_ms_ = prefs_.getUInt("timeout", tcp_timeout_ms_);
     silent_on_timeout_ = prefs_.getBool("silentto", silent_on_timeout_);
@@ -723,6 +736,10 @@ class ModbusGateway : public Component {
     client_txn_.end_to_end_started_us = end_to_end_started_us;
     client_txn_.cacheable_read = cacheable_read;
 
+    if (transport_ == "UDP") {
+      start_udp_client_transaction_(unit_id, pdu);
+      return;
+    }
     uint32_t connect_started_us = micros();
     const String local_ip = local_wifi_ip_();
     const bool wifi_connected = wifi::global_wifi_component != nullptr &&
@@ -792,10 +809,12 @@ class ModbusGateway : public Component {
     const uint32_t response_us = micros() - client_txn_.response_started_us;
     const uint32_t first_byte_us = client_txn_.response_timing.first_delay_us(client_txn_.response_started_us);
     const uint32_t response_span_us = client_txn_.response_timing.span_us();
-    add_log_("TCP RX", client_txn_.response_pdu.data(), client_txn_.response_pdu.size());
-    if (!tcp_persistent_) {
+    if (transport_ == "TCP") add_log_("TCP RX", client_txn_.response_pdu.data(), client_txn_.response_pdu.size());
+    if (transport_ == "UDP") {
+      // UDP is connectionless; do not report TCP keepalive events.
+    } else if (!tcp_persistent_) {
       client_.stop();
-    } else {
+    } else if (transport_ == "TCP") {
       const String target = String(cfg_host_.c_str()) + ":" + String(cfg_port_);
       add_event_("TCP KEEP", String("Persistent connection kept open to ") + target + ".");
     }
@@ -843,8 +862,8 @@ class ModbusGateway : public Component {
     const uint32_t first_byte_us = response_wait_started ?
         client_txn_.response_timing.first_delay_us(client_txn_.response_started_us) : 0;
     const uint32_t response_span_us = client_txn_.response_timing.span_us();
-    add_event_("TCP ERROR", reason);
-    if (client_) client_.stop();
+    add_event_(transport_ == "UDP" ? "UDP ERROR" : "TCP ERROR", reason);
+    if (transport_ != "UDP" && client_) client_.stop();
     if (client_txn_.request_pdu.empty()) {
       reset_client_transaction_();
       return;
@@ -1150,6 +1169,172 @@ class ModbusGateway : public Component {
     tcp_client_cursor_ = 0;
   }
 
+  // UDP uses one datagram per Modbus ADU. No retries: write requests must
+  // never be replayed automatically after an ambiguous timeout.
+  void start_udp_() {
+    udp_.stop();
+    if (transport_ != "UDP") return;
+    const uint16_t port = tcp_mode_ == "SERVER" ? cfg_port_ : 0;
+    if (!udp_.begin(port)) add_event_("UDP ERROR", "Unable to bind UDP socket.");
+  }
+
+  void start_udp_client_transaction_(uint8_t unit_id, const std::vector<uint8_t> &pdu) {
+    // Ignore any stale datagrams from a previous transaction.
+    for (unsigned i = 0; i < 4 && udp_.parsePacket() > 0; ++i) {
+      uint8_t stale[260];
+      while (udp_.available()) udp_.read(stale, sizeof(stale));
+    }
+    if (!udp_target_ip_.fromString(cfg_host_.c_str())) {
+      fail_client_transaction_("UDP target must be a valid IPv4 address.");
+      return;
+    }
+    uint8_t request[mbap::MAX_ADU_SIZE];
+    const uint16_t tid = transaction_id_++;
+    const size_t size = mbap::encode_adu(request, sizeof(request), tid, unit_id, pdu.data(), pdu.size());
+    if (!size || !udp_.beginPacket(udp_target_ip_, cfg_port_)) {
+      fail_client_transaction_("Cannot start UDP request.");
+      return;
+    }
+    const size_t written = udp_.write(request, size);
+    const bool sent = udp_.endPacket() == 1;
+    if (written != size || !sent) {
+      fail_client_transaction_("Cannot send UDP request.");
+      return;
+    }
+    client_txn_.transaction_id = tid;
+    client_txn_.response_started_us = micros();
+    client_txn_.response_stage_started_ms = millis();
+    client_txn_.state = ClientTxnState::WAIT_MBAP;
+    add_log_("UDP TX", request, size);
+  }
+
+  void process_udp_client_transaction_() {
+    if (client_txn_.state == ClientTxnState::IDLE) return;
+    // Bound processing so unrelated network traffic cannot starve ESPHome.
+    for (unsigned i = 0; i < 4; ++i) {
+      const int packet_size = udp_.parsePacket();
+      if (packet_size <= 0) break;
+      const IPAddress sender = udp_.remoteIP();
+      const uint16_t sender_port = udp_.remotePort();
+      uint8_t packet[mbap::MAX_ADU_SIZE];
+      const int read_size = packet_size <= int(sizeof(packet)) ?
+          udp_.read(packet, sizeof(packet)) : -1;
+      while (udp_.available()) udp_.read();
+      if (sender != udp_target_ip_ || sender_port != cfg_port_) continue;
+      mbap::Header header;
+      const uint8_t *response_pdu = nullptr;
+      size_t response_size = 0;
+      if (read_size < 0 || !mbap::decode_datagram(packet, size_t(read_size), header,
+                                                  response_pdu, response_size) ||
+          !mbap::matches_response(header, client_txn_.transaction_id, client_txn_.unit_id))
+        continue;
+      client_txn_.response_timing.mark(micros());
+      client_txn_.response_pdu.assign(response_pdu, response_pdu + response_size);
+      add_log_("UDP RX", packet, size_t(read_size));
+      finish_client_transaction_();
+      return;
+    }
+    if (millis() - client_txn_.response_stage_started_ms >= tcp_timeout_ms_)
+      fail_client_transaction_("Timeout waiting for Modbus UDP response.", true);
+  }
+
+  // One UDP request is handled at a time on the shared half-duplex RS485 bus.
+  // The reply is always sent to the IP/port of the originating datagram.
+  void handle_udp_server_() {
+    const int packet_size = udp_.parsePacket();
+    if (packet_size <= 0) return;
+    const IPAddress source_ip = udp_.remoteIP();
+    const uint16_t source_port = udp_.remotePort();
+    uint8_t packet[mbap::MAX_ADU_SIZE];
+    const int received = packet_size <= int(sizeof(packet)) ?
+        udp_.read(packet, sizeof(packet)) : -1;
+    while (udp_.available()) udp_.read();
+    mbap::Header header;
+    const uint8_t *pdu_data = nullptr;
+    size_t pdu_size = 0;
+    if (received < 0 || !mbap::decode_datagram(packet, size_t(received),
+                                               header, pdu_data, pdu_size)) {
+      add_event_("UDP ERROR", "Invalid Modbus UDP request discarded.");
+      return;
+    }
+    // Broadcast and reserved Unit IDs are not forwarded as ordinary unicast
+    // transactions. Manual mapping permits an explicitly configured RTU ID.
+    const uint8_t unit = manual_rtu_id_ ? configured_rtu_id_ : header.unit_id;
+    if (unit < 1 || unit > 247) {
+      add_event_("UDP ERROR", "Invalid RTU Unit ID.");
+      return;
+    }
+    const std::vector<uint8_t> pdu(pdu_data, pdu_data + pdu_size);
+    add_log_("UDP RX", packet, size_t(received));
+    uint16_t start_address = 0, quantity = 0;
+    const bool cacheable = is_cacheable_read_request_(pdu, start_address, quantity);
+    std::vector<uint8_t> reply;
+    uint32_t cache_age = 0;
+    if (cache_server_enabled_ && cacheable &&
+        cache_lookup_(CACHE_DIRECTION_SERVER, unit, pdu, reply, cache_age)) {
+      add_event_("CACHE HIT", String("UDP Server; Unit ID=") + String(unit) +
+                 "; age=" + String(cache_age) + " ms.");
+    } else {
+      // Drain residual serial bytes before transmitting a new RTU request.
+      while (Serial1.available()) Serial1.read();
+      std::vector<uint8_t> rtu;
+      rtu.reserve(pdu.size() + 3);
+      rtu.push_back(unit);
+      rtu.insert(rtu.end(), pdu.begin(), pdu.end());
+      const uint16_t crc = crc16_(rtu.data(), rtu.size());
+      rtu.push_back(uint8_t(crc));
+      rtu.push_back(uint8_t(crc >> 8));
+      if (de_re_gpio_ >= 0) digitalWrite(de_re_gpio_, HIGH);
+      delayMicroseconds(100);
+      add_log_("RTU TX", rtu.data(), rtu.size());
+      Serial1.write(rtu.data(), rtu.size());
+      Serial1.flush();
+      delayMicroseconds(100);
+      if (de_re_gpio_ >= 0) digitalWrite(de_re_gpio_, LOW);
+
+      uint8_t response[260];
+      uint32_t first_delay = 0, response_span = 0;
+      const size_t rlen = expected_rtu_response_(pdu[0], pdu.data(), pdu.size(),
+                                                 response, sizeof(response),
+                                                 first_delay, response_span);
+      const bool valid = rlen >= 5 && valid_crc_(response, rlen) &&
+                         response[0] == unit &&
+                         (response[1] == pdu[0] || response[1] == uint8_t(pdu[0] | 0x80));
+      if (valid) {
+        add_log_("RTU RX", response, rlen);
+        reply.assign(response + 1, response + rlen - 2);
+        if (reply[0] == pdu[0]) {
+          if (cacheable && cache_server_enabled_)
+            cache_store_(CACHE_DIRECTION_SERVER, unit, pdu, reply);
+          else if (!cacheable)
+            cache_invalidate_after_write_(CACHE_DIRECTION_SERVER, unit, pdu);
+        }
+      } else {
+        if (rlen >= 5) {
+          ++crc_error_count_;
+          add_log_("RTU RX", response, rlen);
+          add_event_("RTU ERROR", "Invalid RTU response or CRC in UDP Server mode.");
+        } else {
+          add_event_("RTU ERROR", "RTU response timeout in UDP Server mode.");
+        }
+        if (rlen < 5 && silent_on_timeout_) return;
+        reply = {uint8_t(pdu[0] | 0x80), 0x0B};
+      }
+    }
+    uint8_t outgoing[mbap::MAX_ADU_SIZE];
+    const size_t out_len = mbap::encode_adu(outgoing, sizeof(outgoing),
+                                            header.transaction_id, header.unit_id,
+                                            reply.data(), reply.size());
+    if (out_len && udp_.beginPacket(source_ip, source_port)) {
+      const size_t written = udp_.write(outgoing, out_len);
+      const bool sent = udp_.endPacket() == 1;
+      if (written == out_len && sent) add_log_("UDP TX", outgoing, out_len);
+      else add_event_("UDP ERROR", "UDP response write failed.");
+    } else {
+      add_event_("UDP ERROR", "Unable to start UDP response.");
+    }
+  }
+
   void start_tcp_server_() {
     tcp_server_.stop();
     if (client_txn_.state != ClientTxnState::IDLE) {
@@ -1157,7 +1342,7 @@ class ModbusGateway : public Component {
     }
     client_.stop();
     stop_tcp_clients_();
-    if (tcp_mode_ == "SERVER") {
+    if (tcp_mode_ == "SERVER" && transport_ == "TCP") {
       tcp_server_.begin(cfg_port_);
       tcp_server_.setNoDelay(true);
       ESP_LOGI("modbus_gateway", "Modbus TCP server listening on port %u (max %u clients)", cfg_port_, unsigned(MAX_TCP_CLIENTS));
@@ -1499,40 +1684,75 @@ class ModbusGateway : public Component {
     s += R"HTML(<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Modbus Gateway</title>
 <style>
 *{box-sizing:border-box}html{background:#eef3f8}body{font:15px/1.5 Arial,Helvetica,sans-serif;background:#eef3f8;color:#17202a;margin:0;padding:24px 16px}main{max-width:920px;margin:0 auto}.brand{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;margin:0 auto 22px;padding:18px;background:#fff;border-radius:16px;box-shadow:0 3px 14px #0f172a12}.brand-logo{display:block;width:100%;max-width:920px;height:auto;max-height:none;object-fit:contain;margin:0 auto}.brand-version{font-size:12px;font-weight:600;letter-spacing:.35px;color:#64748b;margin-top:-3px}.brand-title{font-size:25px;font-weight:700;letter-spacing:.2px;color:#12345a}.brand-sub{font-size:13px;color:#64748b;margin-top:2px}section{display:block;background:#fff;border:1px solid #e1e8f0;border-radius:14px;padding:20px;margin:16px 0;box-shadow:0 3px 12px rgba(15,23,42,.05)}h2{display:flex;align-items:center;gap:10px;font-size:19px;line-height:1.25;margin:0 0 18px;color:#12345a}.section-icon{display:block;width:54px;height:42px;flex:0 0 54px;object-fit:contain;vertical-align:middle;margin:0;border-radius:6px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px}.tcp-layout{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 18px;align-items:start}.tcp-col{display:flex;flex-direction:column;gap:12px;min-width:0}.tcp-col>div{min-width:0}.tcp-note{grid-column:1/-1}label{display:block;font-size:13px;font-weight:600;color:#475569;margin:0 0 6px}input,select{display:block;width:100%;min-height:40px;box-sizing:border-box;padding:9px 11px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#17202a;font-size:15px}input:focus,select:focus{outline:2px solid #93c5fd;border-color:#2563eb}button{background:#1769aa;color:#fff;border:0;border-radius:8px;padding:11px 18px;font-size:14px;font-weight:600;cursor:pointer}button:hover{background:#125487}.muted{color:#64748b;font-size:13px}pre{white-space:pre-wrap;word-break:break-word;background:#101827;color:#dbeafe;padding:14px;border-radius:9px;max-height:360px;overflow:auto}.crc-byte{display:inline-block;border:2px solid #fbbf24;border-radius:50%;padding:1px 4px;margin:0 1px;color:#fde68a;font-weight:bold}.crc-ok{color:#86efac;font-weight:bold}.crc-bad{color:#fca5a5;font-weight:bold}#langBtn{float:right;margin:0 0 10px 10px}.check-label{display:flex;align-items:center;gap:9px;font-weight:600}.check-label input{width:18px;min-height:18px;margin:0}.reboot-panel{display:flex;align-items:center;justify-content:space-between;gap:18px;background:#fff;border:1px solid #e1e8f0;border-radius:14px;padding:14px 20px;margin:12px 0 16px}.reboot-panel button{background:#64748b}.reboot-panel button:hover{background:#475569}.apply-panel{display:flex;align-items:center;justify-content:space-between;gap:18px;background:#fff;border:1px solid #cbdbea;border-radius:14px;padding:16px 20px;margin:16px 0;box-shadow:0 3px 12px rgba(15,23,42,.05)}.apply-panel strong{display:block;color:#12345a;font-size:15px}.apply-panel .muted{margin-top:3px}.button-link{display:inline-block;background:#1769aa;color:#fff;border:0;border-radius:8px;padding:11px 18px;font-size:14px;font-weight:600;text-decoration:none;white-space:nowrap}.button-link:hover{background:#125487}@media(max-width:560px){.reboot-panel{align-items:stretch;flex-direction:column;gap:10px}.reboot-panel button{width:100%}.apply-panel{align-items:stretch;flex-direction:column;gap:10px}.apply-panel button,.apply-panel .button-link{width:100%;text-align:center}}#cfg{margin:0}@media(max-width:560px){body{padding:12px 9px}section{padding:14px}.brand{padding:12px}.brand-logo{width:100%;max-width:100%;max-height:none}.brand-title{font-size:20px}h2{font-size:17px}.section-icon{width:46px;height:36px;flex-basis:46px}.grid,.tcp-layout{grid-template-columns:1fr}.tcp-note{grid-column:auto}}
-</style></head><body><main><button type="button" id="langBtn" onclick="toggleLanguage()" style="float:right">English</button><header class="brand">
+
+/* Optional dark appearance: only presentation changes, not gateway settings. */
+html[data-theme="dark"],html[data-theme="dark"] body{background:#0b1220;color:#e2e8f0;color-scheme:dark}
+html[data-theme="dark"] .brand,html[data-theme="dark"] section,html[data-theme="dark"] .reboot-panel,html[data-theme="dark"] .apply-panel{background:#172235;border-color:#334155;box-shadow:0 3px 14px #0004}
+html[data-theme="dark"] h2,html[data-theme="dark"] .brand-title,html[data-theme="dark"] .apply-panel strong{color:#bfdbfe}
+html[data-theme="dark"] label{color:#cbd5e1}
+html[data-theme="dark"] .muted,html[data-theme="dark"] .brand-sub,html[data-theme="dark"] .brand-version{color:#94a3b8}
+html[data-theme="dark"] input,html[data-theme="dark"] select,html[data-theme="dark"] textarea{background:#0f172a;color:#f1f5f9;border-color:#475569}
+html[data-theme="dark"] pre{background:#080e1b;color:#dbeafe;border:1px solid #334155}
+.ui-toolbar{display:flex;justify-content:flex-end;align-items:center;gap:6px;margin:0 0 6px}.ui-toolbar button{float:none!important;margin:0!important;padding:5px 9px;min-height:29px;min-width:37px;font-size:12px;line-height:1.1;border-radius:7px;box-shadow:none}.ui-toolbar #themeBtn{background:#334155;color:#fff}.ui-toolbar #themeBtn:hover{background:#475569}.ui-toolbar #langBtn{background:#1769aa;color:#fff}.ui-toolbar #langBtn:hover{background:#125487}
+
+/* Full-width banner: the toolbar sits above it and never reduces logo width. */
+.brand{width:100%;max-width:none;padding:12px 10px 18px;clear:both}
+.brand-logo{display:block;width:100%;max-width:none;height:auto;object-fit:contain}
+@media(max-width:560px){.brand{padding:8px 5px 14px}.brand-logo{width:100%;max-width:none}}
+.ip-section-icon{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:0 0 62px;width:62px;height:48px;padding:3px 2px;border-radius:8px;background:linear-gradient(145deg,#087fc0,#00345d);color:#fff;box-shadow:inset 0 1px 2px #ffffff55;font:700 10px/1.05 Arial,Helvetica,sans-serif;text-align:center}.ip-section-icon strong{font-size:19px;line-height:1.05;color:#fff}.ip-section-icon small{font-size:7px;letter-spacing:.15px;color:#d8f5ff}@media(max-width:560px){.ip-section-icon{flex-basis:54px;width:54px;height:42px}.ip-section-icon strong{font-size:16px}}
+/* Section thumbnails reuse the original photographic artwork from the header logo. */
+.section-badge{position:relative;display:flex;align-items:center;justify-content:center;flex:0 0 76px;width:76px;height:60px;padding:3px;overflow:hidden;border:2px solid #05bfe8;border-radius:13px;background:linear-gradient(140deg,#07699d,#022b52);box-shadow:inset 0 1px 2px #ffffff77,0 3px 8px #003a7040;transition:transform .15s ease,box-shadow .15s ease}
+.section-badge img{display:block;width:100%;height:100%;object-fit:contain;border-radius:8px;filter:saturate(1.12) contrast(1.06)}
+.section-badge small{position:absolute;right:2px;bottom:2px;min-width:27px;padding:1px 3px;border:1px solid #31d7ff;border-radius:5px;background:#03446a;color:white;font:800 9px/1.15 Arial,Helvetica,sans-serif;text-align:center;box-shadow:0 1px 4px #001a3b88}
+.section-badge-ip small{font-size:11px;min-width:30px}
+@media(hover:hover){h2:hover>.section-badge{transform:translateY(-2px);box-shadow:0 5px 12px #0369a155}}
+@media(max-width:560px){.section-badge{flex-basis:66px;width:66px;height:52px;border-radius:11px}.section-badge small{font-size:8px}}
+
+/* TCP/UDP illustration replaces the obsolete TCP-only image. */
+.section-badge-ip{background:linear-gradient(150deg,#e6fbff,#b1eaff);border-color:#00c8ef}
+.section-badge-ip .ip-art{display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;gap:0}
+.section-badge-ip .ip-title{font:800 9px/1 Arial,sans-serif;color:#fff;background:linear-gradient(#047ec0,#00396c);border-radius:5px;padding:2px 4px;white-space:nowrap}
+.section-badge-ip .ip-protocol{font:800 7px/1.1 Arial,sans-serif;color:#003d68;white-space:nowrap}
+.section-badge-ip svg{width:100%;height:26px;flex-shrink:1}
+@media(max-width:560px){.section-badge-ip .ip-title{font-size:8px}.section-badge-ip .ip-protocol{font-size:6px}.section-badge-ip svg{height:23px}}
+</style></head><body><main><nav class="ui-toolbar" aria-label="Affichage et langue"><button type="button" id="themeBtn" onclick="toggleTheme()" aria-label="Mode sombre" title="Mode sombre">☾</button><button type="button" id="langBtn" onclick="toggleLanguage()" aria-label="English" title="English">EN</button></nav><header class="brand">
 <img class="brand-logo" src="/img/logo.webp" alt="Logo passerelle Modbus"><div class="brand-version">Version )HTML";
     s += String(version_.c_str());
-    s += R"HTML(</div><div><div class="brand-title">Passerelle Modbus RTU ↔ TCP</div><div class="brand-sub" data-fr="Passerelle série ↔ réseau" data-en="Serial ↔ network gateway">Passerelle série ↔ réseau</div></div></header>
-<section><h2><img class="section-icon" src="/img/modbus-tcp.jpg" alt="">1. Modbus TCP</h2><div class="tcp-layout"><div class="tcp-col"><div><label>Mode</label><select name="mode" form="cfg">)HTML";
-    s += "<option value=\"CLIENT\"" + String(tcp_mode_ == "CLIENT" ? " selected" : "") + ">Client TCP (RTU vers serveur)</option>";
-    s += "<option value=\"SERVER\"" + String(tcp_mode_ == "SERVER" ? " selected" : "") + ">Serveur TCP (client TCP vers RTU)</option>";
-    s += R"HTML(</select></div>
-<div id="host_field"><label>Adresse IP du serveur Modbus TCP</label><input id="host_input" name="host" form="cfg" value=")HTML";
+    s += R"HTML(</div><div><div class="brand-title">Passerelle Modbus RTU ↔ IP</div><div class="brand-sub" data-fr="Passerelle série ↔ réseau" data-en="Serial ↔ network gateway">Passerelle série ↔ réseau</div></div></header>
+<section><h2><span class="section-badge section-badge-ip" aria-hidden="true"><span class="ip-art"><span class="ip-title">Modbus IP</span><span class="ip-protocol">TCP / UDP</span><svg viewBox="0 0 72 32" xmlns="http://www.w3.org/2000/svg"><path d="M5 18L21 7l7 6-16 12z" fill="#31c7ff" stroke="#bdf5ff" stroke-width="1.5"/><path d="M9 18l8-6 7 3-9 7z" fill="#00578e"/><path d="M26 17h12" stroke="#19d4ff" stroke-width="3" stroke-linecap="round"/><rect x="39" y="6" width="15" height="21" rx="3" fill="#06416e" stroke="#58d8ff" stroke-width="1.5"/><path d="M42 11h9M42 16h9M42 21h9" stroke="#62dfff" stroke-width="1.5"/><circle cx="51" cy="11" r="1" fill="#b2ff70"/><rect x="58" y="9" width="12" height="14" rx="2" fill="#077db7" stroke="#a2eeff" stroke-width="1.5"/><path d="M61 19v-4m3 4v-7m3 7v-5" stroke="#e9fcff" stroke-width="1.5"/></svg></span></span>1. Modbus IP</h2><div class="tcp-layout"><div class="tcp-col"><div><label>Mode</label><select name="mode" form="cfg">)HTML";
+    s += "<option value=\"CLIENT\"" + String(tcp_mode_ == "CLIENT" ? " selected" : "") + ">Client IP (RTU vers serveur)</option>";
+    s += "<option value=\"SERVER\"" + String(tcp_mode_ == "SERVER" ? " selected" : "") + ">Serveur IP (client IP vers RTU)</option>";
+    s += R"HTML(</select></div><div><label>Transport</label><select name="transport" form="cfg"><option value="TCP")HTML";
+    if (transport_ == "TCP") s += " selected";
+    s += R"HTML(>TCP</option><option value="UDP")HTML";
+    if (transport_ == "UDP") s += " selected";
+    s += R"HTML(>UDP</option></select></div>
+<div id="host_field"><label>Adresse IP du serveur Modbus</label><input id="host_input" name="host" form="cfg" value=")HTML";
     s += cfg_host_.c_str();
-    s += R"HTML("></div><div><label>Port Modbus TCP</label><input name="port" form="cfg" type="number" min="1" max="65535" value=")HTML";
+    s += R"HTML("></div><div><label>Port Modbus IP</label><input name="port" form="cfg" type="number" min="1" max="65535" value=")HTML";
     s += String(cfg_port_);
     s += R"HTML("></div><div><label>Comportement en cas de timeout distant</label><select name="timeout_behavior" form="cfg"><option value="standard")HTML";
     if (!silent_on_timeout_) s += " selected";
     s += R"HTML(>Standard : envoyer une exception Modbus</option><option value="silent")HTML";
     if (silent_on_timeout_) s += " selected";
-    s += R"HTML(>Silencieux : ne pas répondre</option></select><p class="muted">S’applique aux deux modes TCP. En mode silencieux, seule l’absence de réponse distante déclenche le silence ; les erreurs de trame CRC restent signalées.</p></div></div>
-<div class="tcp-col"><div><label>Timeout TCP (secondes)</label><input name="timeout" form="cfg" type="number" min="1" max="30" value=")HTML";
+    s += R"HTML(>Silencieux : ne pas répondre</option></select><p class="muted">S’applique aux modes Client et Serveur. En mode silencieux, seule l’absence de réponse distante déclenche le silence ; les erreurs de trame CRC restent signalées.</p></div></div>
+<div class="tcp-col"><div><label>Timeout réseau (secondes)</label><input name="timeout" form="cfg" type="number" min="1" max="30" value=")HTML";
     s += String(tcp_timeout_ms_ / 1000);
     s += R"HTML("></div><div id="persistent_tcp_field"><label class="check-label"><input type="checkbox" name="persistent" value="1" form="cfg")HTML";
     if (tcp_persistent_) s += " checked";
     s += R"HTML(> Connexion TCP persistante</label><p class="muted">Garde la connexion ouverte entre les requêtes RTU pour réduire la latence (mode Client TCP uniquement).</p></div>
 <div id="cache_client_field"><label class="check-label"><input type="checkbox" name="cache_client" value="1" form="cfg")HTML";
     if (cache_client_enabled_) s += " checked";
-    s += R"HTML(> Activer le cache en mode Client TCP (RTU → TCP)</label></div>
+    s += R"HTML(> Activer le cache en mode Client IP (RTU → IP)</label></div>
 <div id="cache_server_field"><label class="check-label"><input type="checkbox" name="cache_server" value="1" form="cfg")HTML";
     if (cache_server_enabled_) s += " checked";
-    s += R"HTML(> Activer le cache en mode Serveur TCP (TCP → RTU)</label></div>
-<div><label>Durée de validité du cache (ms)</label><input name="cache_ttl" form="cfg" type="number" min="50" max="10000" value=")HTML";
+    s += R"HTML(> Activer le cache en mode Serveur IP (IP → RTU)</label></div>
+<div id="cache_ttl_field"><label>Durée de validité du cache (ms)</label><input name="cache_ttl" form="cfg" type="number" min="50" max="10000" value=")HTML";
     s += String(cache_ttl_ms_);
     s += R"HTML("></div></div>
 <div class="muted tcp-note">Le cache concerne uniquement les lectures Modbus (fonctions 01 à 04). L’option affichée correspond au mode TCP sélectionné ; le réglage de l’autre mode est conservé. Les écritures réussies invalident les réponses mémorisées pour l’Unit ID concerné. 64 entrées maximum.</div>
 </div></section>
-<section><h2><img class="section-icon" src="/img/modbus-rtu.jpg" alt="">2. Paramètres Modbus RTU</h2><div class="grid">
+<section><h2><span class="section-badge section-badge-rtu" aria-hidden="true"><img src="/img/modbus-rtu.jpg" alt=""><small>RTU</small></span>2. Paramètres Modbus RTU</h2><div class="grid">
 <div><label>Baudrate</label><select name="baud" form="cfg">)HTML";
     const uint32_t baud_opts[]={1200,2400,4800,9600,19200,38400,57600,115200};
     for (auto b: baud_opts) { s += "<option value=\""+String(b)+"\""; if (b==cfg_baud_) s+=" selected"; s+=">"+String(b)+"</option>"; }
@@ -1546,7 +1766,7 @@ class ModbusGateway : public Component {
 <div id="rtu_id_mode_field"><label>Identifiant Modbus RTU</label><select name="idmode" form="cfg"><option value="auto")HTML"; if (!manual_rtu_id_) s += " selected"; s += R"HTML(>Automatique (adresse reçue)</option><option value="manual")HTML"; if (manual_rtu_id_) s += " selected"; s += R"HTML(>Manuel</option></select></div>
 <div id="rtu_id_manual_field"><label>ID RTU manuel (1–247)</label><input name="rtuid" form="cfg" type="number" min="1" max="247" value=")HTML"; s += String(configured_rtu_id_); s += R"HTML("></div>
 </div></section>
-<section><h2><img class="section-icon" src="/img/esp32.jpg" alt="">3. Configuration</h2>
+<section><h2><span class="section-badge section-badge-cfg" aria-hidden="true"><img src="/img/esp32.jpg" alt=""><small>ESP32</small></span>3. Configuration</h2>
 <div class="grid">
 <div><label>GPIO TX (-1 = automatique)</label><input name="tx" form="cfg" type="number" min="-1" max="48" value=")HTML"; s += String(tx_gpio_); s += R"HTML("></div>
 <div><label>GPIO RX (-1 = automatique)</label><input name="rx" form="cfg" type="number" min="-1" max="48" value=")HTML"; s += String(rx_gpio_); s += R"HTML("></div>
@@ -1556,24 +1776,24 @@ class ModbusGateway : public Component {
 </section>
 <form id="cfg" method="POST" action="/save"><input type="hidden" id="form_lang" name="lang" value="fr"><div class="apply-panel"><div><strong>Enregistrement global</strong><div class="muted">Les paramètres des sections 1, 2 et 3 seront enregistrés ensemble.</div></div><button type="submit">Enregistrer / appliquer</button></div></form>
 <form id="rebootForm" method="POST" action="/reboot"><input type="hidden" id="reboot_lang" name="lang" value="fr"><div class="reboot-panel"><div><strong>Redémarrer la passerelle</strong><div class="muted">Redémarre l’ESP32 sans modifier les paramètres enregistrés.</div></div><button type="submit">Redémarrer</button></div></form>
-<section><h2><img class="section-icon" src="/img/frame-diagnostics.jpg" alt="">4. Debug des trames</h2>
+<section><h2><span class="section-badge section-badge-log" aria-hidden="true"><img src="/img/frame-diagnostics.jpg" alt=""><small>LOG</small></span>4. Debug des trames</h2>
 <p class="muted">RTU RX/TX et TCP TX/RX · rafraîchissement automatique toutes les 1,5 s</p>
 <p class="muted">Les tentatives de connexion TCP et les erreurs réseau sont également affichées dans cette fenêtre.</p>
 <p><button id="listenBtn" type="button" onclick="toggleListen()">Arrêter l’écoute RTU</button> <span id="listenState">Écoute RTU active</span></p>
 <div style="margin-top:14px"><label for="rtuFrame">Trame RTU à envoyer (hexadécimal, avec adresse et CRC, ex. 0B 03 00 00 00 01 84 A0)</label>
 <input id="rtuFrame" placeholder="0B 03 00 00 00 01 ... CRC" autocomplete="off">
 <button type="button" onclick="sendManual()" style="margin-top:10px">Envoyer au serveur TCP</button></div>
-<p class="muted">Réponse du serveur Modbus TCP :</p><pre id="manualResponse">Aucune requête manuelle</pre>
+<p class="muted">Réponse du serveur Modbus IP :</p><pre id="manualResponse">Aucune requête manuelle</pre>
 <p style="margin-bottom:6px"><button type="button" onclick="clearFrames()">Vider l’affichage des trames</button> <a class="button-link" href="/frames.txt">Exporter la capture des trames (.txt)</a></p>
 <p class="muted">L’export contient les 64 dernières entrées mémorisées, y compris les mesures de latence.</p>
 <pre id="frames">Chargement des trames…</pre></section>
 <script>
 let currentLanguage='fr';
 const translations={
-'Mode':'Mode','Client TCP (RTU vers serveur)':'TCP client (RTU to server)','Serveur TCP (client TCP vers RTU)':'TCP server (TCP client to RTU)',
+'Mode':'Mode','Client IP (RTU vers serveur)':'TCP client (RTU to server)','Serveur IP (client IP vers RTU)':'TCP server (TCP client to RTU)',
 'Connexion TCP persistante':'Persistent TCP connection','Garde la connexion ouverte entre les requêtes RTU pour réduire la latence (mode Client TCP uniquement).':'Keep the connection open between RTU requests to reduce latency (TCP Client mode only).','Redémarrer la passerelle':'Restart gateway','Redémarrer':'Restart','Redémarre l’ESP32 sans modifier les paramètres enregistrés.':'Restart the ESP32 without changing saved settings.',
-'Adresse IP du serveur Modbus TCP':'Modbus TCP server IP address','Port Modbus TCP':'Modbus TCP port','Timeout TCP (secondes)':'TCP timeout (seconds)','Comportement en cas de timeout distant':'Behavior when the remote device times out','Standard : envoyer une exception Modbus':'Standard: send a Modbus exception','Silencieux : ne pas répondre':'Silent: do not reply','S’applique aux deux modes TCP. En mode silencieux, seule l’absence de réponse distante déclenche le silence ; les erreurs de trame CRC restent signalées.':'Applies to both TCP modes. Silent mode is used only when the remote device does not respond; CRC frame errors are still reported.',
-'Activer le cache en mode Client TCP (RTU → TCP)':'Enable cache in TCP Client mode (RTU → TCP)','Activer le cache en mode Serveur TCP (TCP → RTU)':'Enable cache in TCP Server mode (TCP → RTU)','Durée de validité du cache (ms)':'Cache time-to-live (ms)','Le cache concerne uniquement les lectures Modbus (fonctions 01 à 04). L’option affichée correspond au mode TCP sélectionné ; le réglage de l’autre mode est conservé. Les écritures réussies invalident les réponses mémorisées pour l’Unit ID concerné. 64 entrées maximum.':'The cache stores only Modbus read requests (functions 01 to 04). Only the option for the selected TCP mode is shown; the other mode’s setting is preserved. Successful writes invalidate cached responses for the affected Unit ID. Maximum 64 entries.',
+'Adresse IP du serveur Modbus':'Modbus server IP address','Port Modbus IP':'Modbus IP port','Timeout réseau (secondes)':'Network timeout (seconds)','Comportement en cas de timeout distant':'Behavior when the remote device times out','Standard : envoyer une exception Modbus':'Standard: send a Modbus exception','Silencieux : ne pas répondre':'Silent: do not reply','S’applique aux modes Client et Serveur. En mode silencieux, seule l’absence de réponse distante déclenche le silence ; les erreurs de trame CRC restent signalées.':'Applies to both TCP modes. Silent mode is used only when the remote device does not respond; CRC frame errors are still reported.',
+'Activer le cache en mode Client IP (RTU → IP)':'Enable cache in TCP Client mode (RTU → TCP)','Activer le cache en mode Serveur IP (IP → RTU)':'Enable cache in TCP Server mode (TCP → RTU)','Durée de validité du cache (ms)':'Cache time-to-live (ms)','Le cache concerne uniquement les lectures Modbus (fonctions 01 à 04). L’option affichée correspond au mode TCP sélectionné ; le réglage de l’autre mode est conservé. Les écritures réussies invalident les réponses mémorisées pour l’Unit ID concerné. 64 entrées maximum.':'The cache stores only Modbus read requests (functions 01 to 04). Only the option for the selected TCP mode is shown; the other mode’s setting is preserved. Successful writes invalidate cached responses for the affected Unit ID. Maximum 64 entries.',
 'CACHE TROUVÉ':'CACHE HIT','CACHE ABSENT':'CACHE MISS','CACHE ENREGISTRÉ':'CACHE STORE','CACHE INVALIDÉ':'CACHE INVALIDATE','Mode Client':'Client mode','Mode Serveur':'Server mode','Fonction=':'Function=','Adresse=':'Address=','Quantité=':'Quantity=','Âge=':'Age=','Entrées=':'Entries=','Opération réussie hors lecture.':'Successful non-read operation.',
 'Baudrate':'Baud rate','Data bits':'Data bits','Parity':'Parity','Stop bits':'Stop bits',
 'GPIO TX (-1 = automatique)':'TX GPIO (-1 = automatic)','GPIO RX (-1 = automatique)':'RX GPIO (-1 = automatic)','GPIO DE/RE/EN (-1 = automatique)':'DE/RE/EN GPIO (-1 = automatic)',
@@ -1584,7 +1804,7 @@ const translations={
 'Les tentatives de connexion TCP et les erreurs réseau sont également affichées dans cette fenêtre.':'TCP connection attempts and network errors are also displayed in this window.',
 'Arrêter l’écoute RTU':'Stop RTU listening','Reprendre l’écoute RTU':'Resume RTU listening','Écoute RTU active':'RTU listening','Écoute RTU suspendue':'RTU listening paused','Erreur de commande':'Command error',
 'Trame RTU à envoyer (hexadécimal, avec adresse et CRC, ex. 0B 03 00 00 00 01 84 A0)':'RTU frame to send (hexadecimal, including address and CRC, e.g. 0B 03 00 00 00 01 84 A0)',
-'Envoyer au serveur TCP':'Send to TCP server','Réponse du serveur Modbus TCP :':'Modbus TCP server response:','Aucune requête manuelle':'No manual request','Vider l’affichage des trames':'Clear frame log','Exporter la capture des trames (.txt)':'Export frame capture (.txt)','L’export contient les 64 dernières entrées mémorisées, y compris les mesures de latence.':'The export contains the 64 most recent stored entries, including timing diagnostics.','Chargement des trames…':'Loading frames…','Aucune trame':'No frames',
+'Envoyer au serveur TCP':'Send to TCP server','Réponse du serveur Modbus IP :':'Modbus IP server response:','Aucune requête manuelle':'No manual request','Vider l’affichage des trames':'Clear frame log','Exporter la capture des trames (.txt)':'Export frame capture (.txt)','L’export contient les 64 dernières entrées mémorisées, y compris les mesures de latence.':'The export contains the 64 most recent stored entries, including timing diagnostics.','Chargement des trames…':'Loading frames…','Aucune trame':'No frames',
 'CRC Erreur':'CRC Error','CRC ERROR':'Erreur CRC','RTU ERROR':'Erreur RTU','Client mode | RTU request discarded; Unit ID=':'Mode Client | requête RTU rejetée ; ID unité=','Server mode | RTU response discarded; RTU Unit ID=':'Mode Serveur | réponse RTU rejetée ; ID unité RTU=','Server mode | No complete RTU response; Unit ID=':'Mode Serveur | aucune réponse RTU complète ; ID unité=','; Function=':'; fonction=','; bytes=':'; octets=','; received=0x':'; CRC reçu=0x','; calculated=0x':'; CRC calculé=0x','; total CRC errors=':'; total erreurs CRC=','. TCP gateway exception 0x0B returned.':'. Exception passerelle TCP 0x0B renvoyée.','Erreur':'Error','CRC OK':'CRC OK','Envoi en cours…':'Sending…','Erreur de communication avec la passerelle':'Gateway communication error',
 'Erreur : saisir une trame RTU complète en hexadécimal (adresse, fonction, données, CRC).':'Error: enter a complete RTU frame in hexadecimal (address, function, data, CRC).',
 'Erreur : caractère hexadécimal invalide.':'Error: invalid hexadecimal character.',
@@ -1629,8 +1849,8 @@ const translations={
 'Pending RTU input buffer overflow; buffered bytes discarded.':'Débordement du tampon RTU en attente ; les octets mémorisés ont été supprimés.',
 'Une transaction RTU/TCP est en cours. Réessayez après sa réponse.':'An RTU/TCP transaction is in progress. Retry after its response.',
 'Réponse TCP (PDU) :':'TCP response (PDU):','Réponse RTU complète :':'Complete RTU response:',
-'Passerelle série ↔ réseau':'Serial ↔ network gateway','Passerelle Modbus RTU ↔ TCP':'Modbus RTU ↔ TCP Gateway',
-'1. Modbus TCP':'1. Modbus TCP','2. Paramètres Modbus RTU':'2. Modbus RTU settings','3. Configuration':'3. Configuration','4. Debug des trames':'4. Frame diagnostics'
+'Passerelle série ↔ réseau':'Serial ↔ network gateway','Passerelle Modbus RTU ↔ IP':'Modbus RTU ↔ IP Gateway',
+'1. Modbus IP':'1. Modbus IP','2. Paramètres Modbus RTU':'2. Modbus RTU settings','3. Configuration':'3. Configuration','4. Debug des trames':'4. Frame diagnostics'
 };
 function tr(fr,en){return currentLanguage==='fr'?fr:en;}
 function translateValue(value){const pairs=Object.entries(translations).map(([fr,en])=>currentLanguage==='en'?[fr,en]:[en,fr]).sort((a,b)=>b[0].length-a[0].length);let out=value;for(const [from,to] of pairs){if(from)out=out.split(from).join(to);}return out;}
@@ -1638,16 +1858,33 @@ function applyLanguage(){
   const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
   let node;while((node=walker.nextNode())){const parent=node.parentElement;if(!parent||['SCRIPT','STYLE'].includes(parent.tagName))continue;const raw=node.nodeValue;const trimmed=raw.trim();if(!trimmed)continue;const translated=translateValue(trimmed);if(translated!==trimmed)node.nodeValue=raw.replace(trimmed,translated);}
   document.querySelectorAll('[placeholder]').forEach(el=>{el.placeholder=translateValue(el.placeholder);});
-  document.getElementById('langBtn').textContent=currentLanguage==='fr'?'English':'Français';
+  document.getElementById('langBtn').textContent=currentLanguage==='fr'?'EN':'FR';
+  document.getElementById('langBtn').title=currentLanguage==='fr'?'English':'Français';
+  document.getElementById('langBtn').setAttribute('aria-label',document.getElementById('langBtn').title);
   updateListenState();
 }
-function toggleLanguage(){currentLanguage=currentLanguage==='fr'?'en':'fr';document.getElementById('form_lang').value=currentLanguage;document.getElementById('reboot_lang').value=currentLanguage;applyLanguage();}
+
+function setTheme(theme){
+  const dark=theme==='dark';
+  document.documentElement.setAttribute('data-theme',dark?'dark':'light');
+  const btn=document.getElementById('themeBtn');
+  if(btn)btn.textContent=dark?'☀':'☾';
+  const themeLabel=currentLanguage==='en'?(dark?'Light mode':'Dark mode'):(dark?'Mode clair':'Mode sombre');
+  if(btn){btn.title=themeLabel;btn.setAttribute('aria-label',themeLabel);}
+  try{localStorage.setItem('modbus_theme',dark?'dark':'light');}catch(e){}
+}
+function toggleTheme(){setTheme(document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark');}
+try{setTheme(localStorage.getItem('modbus_theme')==='dark'?'dark':'light');}catch(e){setTheme('light');}
+function toggleLanguage(){currentLanguage=currentLanguage==='fr'?'en':'fr';document.getElementById('form_lang').value=currentLanguage;document.getElementById('reboot_lang').value=currentLanguage;applyLanguage();setTheme(document.documentElement.getAttribute('data-theme'));}
 function toggleRtuId(){const isServer=document.querySelector('select[name=mode]').value==='SERVER';document.getElementById('rtu_id_mode_field').style.display=isServer?'block':'none';document.getElementById('rtu_id_manual_field').style.display=(isServer&&document.querySelector('select[name=idmode]').value==='manual')?'block':'none';}document.querySelector('select[name=idmode]').addEventListener('change',toggleRtuId);document.querySelector('select[name=mode]').addEventListener('change',toggleRtuId);toggleRtuId();
 function crc16Modbus(bytes){let crc=0xFFFF;for(const b of bytes){crc^=b;for(let i=0;i<8;i++)crc=(crc&1)?((crc>>>1)^0xA001):(crc>>>1);}return crc&0xFFFF;}
-function toggleHostField(){const isServer=document.querySelector('select[name="mode"]').value==='SERVER';document.getElementById('host_field').style.display=isServer?'none':'block';document.getElementById('host_input').required=!isServer;const persistentField=document.getElementById('persistent_tcp_field');const persistentInput=document.querySelector('input[name="persistent"]');persistentField.style.display=isServer?'none':'block';persistentInput.disabled=isServer;}
-document.querySelector('select[name="mode"]').addEventListener('change',toggleHostField);toggleHostField();
-function toggleCacheFields(){const isClient=document.querySelector('select[name="mode"]').value==='CLIENT';document.getElementById('cache_client_field').style.display=isClient?'block':'none';document.getElementById('cache_server_field').style.display=isClient?'none':'block';}
-document.querySelector('select[name="mode"]').addEventListener('change',toggleCacheFields);toggleCacheFields();
+function toggleHostField(){const isServer=document.querySelector('select[name="mode"]').value==='SERVER';const isTcp=document.querySelector('select[name="transport"]').value==='TCP';document.getElementById('host_field').style.display=isServer?'none':'block';document.getElementById('host_input').required=!isServer;const persistentField=document.getElementById('persistent_tcp_field');const persistentInput=document.querySelector('input[name="persistent"]');const showPersistent=!isServer&&isTcp;persistentField.style.display=showPersistent?'block':'none';persistentInput.disabled=!showPersistent;}
+document.querySelector('select[name="mode"]').addEventListener('change',toggleHostField);
+document.querySelector('select[name="transport"]').addEventListener('change',toggleHostField);toggleHostField();
+function toggleCacheFields(){const isClient=document.querySelector('select[name="mode"]').value==='CLIENT';document.getElementById('cache_client_field').style.display=isClient?'block':'none';document.getElementById('cache_server_field').style.display=isClient?'none':'block';const activeCache=document.querySelector('input[name="'+(isClient?'cache_client':'cache_server')+'"]');document.getElementById('cache_ttl_field').style.display=activeCache.checked?'block':'none';}
+document.querySelector('select[name="mode"]').addEventListener('change',toggleCacheFields);
+document.querySelector('input[name="cache_client"]').addEventListener('change',toggleCacheFields);
+document.querySelector('input[name="cache_server"]').addEventListener('change',toggleCacheFields);toggleCacheFields();
 function escapeHtml(value){return String(value).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
 function formatFrame(x){const prefix=x.time+' | '+translateValue(x.dir)+' | ';const isRtu=x.dir.startsWith('RTU')||x.dir==='MANUAL RTU';const bytes=x.hex.trim().split(/\s+/).filter(Boolean);if(!isRtu||bytes.length<3)return prefix+escapeHtml(translateValue(x.hex));const vals=bytes.map(b=>parseInt(b,16));if(vals.some(v=>!Number.isFinite(v)))return prefix+x.hex;const calculated=crc16Modbus(vals.slice(0,-2));const crcOk=vals[vals.length-2]===(calculated&255)&&vals[vals.length-1]===((calculated>>8)&255);const payload=bytes.slice(0,-2).join(' ');const crc='<span class=\"crc-byte\">'+bytes[bytes.length-2]+'</span> <span class=\"crc-byte\">'+bytes[bytes.length-1]+'</span>';return prefix+payload+' '+crc+'  <span class=\"'+(crcOk?'crc-ok':'crc-bad')+'\">CRC '+(crcOk?'OK':tr('Erreur','Error'))+'</span>';}
 async function refresh(){try{let r=await fetch('/frames');let j=await r.json();document.getElementById('frames').innerHTML=j.frames.map(formatFrame).join('\n')||tr('Aucune trame','No frames');}catch(e){}}
@@ -1794,6 +2031,8 @@ updateListenState();refresh();setInterval(refresh,1500);
     int new_de = web_.hasArg("de") ? web_.arg("de").toInt() : de_re_gpio_;
     bool gpio_changed = new_tx != tx_gpio_ || new_rx != rx_gpio_ || new_de != de_re_gpio_;
     if (web_.hasArg("mode")) tcp_mode_ = web_.arg("mode").c_str();
+    if (web_.hasArg("transport")) transport_ = web_.arg("transport") == "UDP" ? "UDP" : "TCP";
+
     if (web_.hasArg("host")) cfg_host_ = web_.arg("host").substring(0,63).c_str();
     if (web_.hasArg("port")) { int v=web_.arg("port").toInt(); if(v>=1 && v<=65535) cfg_port_=uint16_t(v); }
     if (web_.hasArg("timeout")) { int v=web_.arg("timeout").toInt(); if(v>=1 && v<=30) tcp_timeout_ms_=uint32_t(v)*1000; }
@@ -1807,7 +2046,7 @@ updateListenState();refresh();setInterval(refresh,1500);
     if (new_de >= -1 && new_de <= 48) de_re_gpio_=new_de;
     manual_rtu_id_ = web_.arg("idmode") == "manual";
     if (web_.hasArg("rtuid")) { int v=web_.arg("rtuid").toInt(); if(v>=1 && v<=247) configured_rtu_id_=uint8_t(v); }
-    prefs_.putString("host", cfg_host_.c_str()); prefs_.putString("mode", tcp_mode_.c_str()); prefs_.putUShort("port", cfg_port_);
+    prefs_.putString("host", cfg_host_.c_str()); prefs_.putString("mode", tcp_mode_.c_str()); prefs_.putString("transport", transport_.c_str()); prefs_.putUShort("port", cfg_port_);
     prefs_.putUInt("timeout", tcp_timeout_ms_); prefs_.putBool("silentto", silent_on_timeout_); prefs_.putInt("tx", tx_gpio_);
     prefs_.putInt("rx", rx_gpio_); prefs_.putInt("de", de_re_gpio_);
     prefs_.putBool("idmanual", manual_rtu_id_); prefs_.putUChar("rtuid", configured_rtu_id_);
@@ -1836,7 +2075,7 @@ updateListenState();refresh();setInterval(refresh,1500);
       send_reboot_response_(web_.arg("lang") == "en");
       return;
     }
-    begin_uart_(); start_tcp_server_();
+    begin_uart_(); start_tcp_server_(); start_udp_();
     web_.sendHeader("Location", "/"); web_.send(303, "text/plain", "Configuration enregistrée");
   }
 };

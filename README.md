@@ -10,6 +10,12 @@ A Wi-Fi Modbus gateway built with **ESPHome**, **ESP32-S3** and the **Arduino fr
 
 > **Reference hardware:** [Waveshare ESP32-S3-RS485-CAN](https://docs.waveshare.com/ESP32-S3-RS485-CAN). The project defaults match this board's RS-485 signals: TX GPIO17, RX GPIO18 and RS485 enable GPIO21. The project maintainer reports successful testing with this device, including four connected Modbus TCP clients.
 
+> **Development branch (`feature/modbus-rtu-ip-udp`):** this branch extends the stable TCP gateway with **TCP Client, TCP Server, UDP Client and UDP Server**. The maintainer reports successful firmware installation and functional checks of all four modes; robustness testing remains pending. The stable TCP-only release is retained on `main`. See [TCP/UDP development and UI behavior](docs/TCP_UDP_DEVELOPMENT.md).
+
+### TCP/UDP development web UI
+
+The development interface labels the network section **Modbus IP**, offers a TCP/UDP selector, and includes four harmonized blue/cyan section thumbnails matching the RTU ↔ IP header artwork. The IP thumbnail explicitly shows **TCP / UDP**. The **Persistent TCP connection** control is displayed only for **TCP Client**; it is hidden for TCP Server and both UDP modes, and the stored TCP setting is preserved while UDP is selected.
+
 ## Response cache
 
 The gateway provides two independent optional response caches, one for each operating mode:
@@ -183,4 +189,4 @@ GPLv3 license text.
 
 ## Latest release
 
-Current component version: **1.1.15**. The bilingual Web UI includes a shared Standard/Silent remote-timeout policy for both TCP modes, mode-aware response-cache controls and write-range-aware cache invalidation. See [CHANGELOG.md](CHANGELOG.md) for the release history, [docs/CLIENT_TCP_ASYNC.md](docs/CLIENT_TCP_ASYNC.md) for cooperative Client TCP handling, and [docs/CACHE.md](docs/CACHE.md) for cache behavior and data-freshness limits.
+Current development component version: **1.2.1** (TCP/UDP feature branch). The stable `main` branch remains at **1.1.15**. The development Web UI supports TCP/UDP Client/Server, mode-aware response caches, a TCP-only persistent connection setting, bilingual labels and harmonized RTU/IP artwork. See [CHANGELOG.md](CHANGELOG.md) for the release history, [docs/CLIENT_TCP_ASYNC.md](docs/CLIENT_TCP_ASYNC.md) for cooperative Client TCP handling, and [docs/CACHE.md](docs/CACHE.md) for cache behavior and data-freshness limits.

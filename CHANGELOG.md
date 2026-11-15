@@ -1,3 +1,15 @@
+## 1.2.1 — TCP/UDP development branch (2026-11-15)
+
+- Harmonized the main RTU ↔ IP header artwork and all four section thumbnails; replaced the TCP-only network thumbnail with a TCP/UDP illustration.
+- Display the persistent TCP connection option only in TCP Client mode; hide and disable it for TCP Server and both UDP modes, preserving the stored TCP preference.
+- Updated TCP/UDP development documentation and recorded maintainer-reported functional tests of all four transport/mode combinations.
+- No changes to Modbus protocol processing in this patch; robustness testing remains pending.
+
+## 1.2.0 — TCP/UDP development branch
+
+- Added selectable TCP/UDP transport with Client and Server modes on the feature branch.
+- Extended the existing Modbus gateway web interface and cache handling to the selected transport.
+
 ## 1.1.15
 
 - Reworked the Modbus TCP settings into two explicit vertical columns so conditional fields no longer leave one column sparse or push all remaining options to one side.
