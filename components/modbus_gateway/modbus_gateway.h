@@ -1700,15 +1700,21 @@ html[data-theme="dark"] pre{background:#080e1b;color:#dbeafe;border:1px solid #3
 .brand-logo{display:block;width:100%;max-width:none;height:auto;object-fit:contain}
 @media(max-width:560px){.brand{padding:8px 5px 14px}.brand-logo{width:100%;max-width:none}}
 .ip-section-icon{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:0 0 62px;width:62px;height:48px;padding:3px 2px;border-radius:8px;background:linear-gradient(145deg,#087fc0,#00345d);color:#fff;box-shadow:inset 0 1px 2px #ffffff55;font:700 10px/1.05 Arial,Helvetica,sans-serif;text-align:center}.ip-section-icon strong{font-size:19px;line-height:1.05;color:#fff}.ip-section-icon small{font-size:7px;letter-spacing:.15px;color:#d8f5ff}@media(max-width:560px){.ip-section-icon{flex-basis:54px;width:54px;height:42px}.ip-section-icon strong{font-size:16px}}
-/* Four unified section emblems: identical dimensions, palette and typography. */
-.section-badge{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:0 0 66px;width:66px;height:50px;padding:3px;border:1px solid #49b9e8;border-radius:9px;background:linear-gradient(145deg,#087fc0,#00345d);box-shadow:inset 0 1px 2px #ffffff55;color:#fff;text-align:center;font:700 10px/1.05 Arial,Helvetica,sans-serif}
-.section-badge span{color:#e6f8ff}.section-badge strong{font-size:18px;line-height:1.05;color:#fff}.section-badge small{font-size:8px;line-height:1.05;color:#d8f5ff;white-space:nowrap}
-@media(max-width:560px){.section-badge{flex-basis:58px;width:58px;height:44px}.section-badge strong{font-size:16px}.section-badge small{font-size:7px}}
+/* Four playful, unified illustrated section badges. No external assets. */
+.section-badge{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;flex:0 0 66px;width:66px;height:58px;padding:4px;border:1px solid #63d4ff;border-radius:14px;background:linear-gradient(145deg,#158fd3 0%,#05619d 52%,#06345c 100%);box-shadow:inset 0 2px 1px #ffffff55,0 3px 8px #0369a130;color:#f8fdff;text-align:center;overflow:hidden;transition:transform .15s ease,box-shadow .15s ease}
+.section-badge:before{content:"";position:absolute;left:-18px;top:-30px;width:75px;height:48px;background:#ffffff20;transform:rotate(-20deg);border-radius:50%}
+.section-badge svg{position:relative;display:block;width:36px;height:36px;flex-shrink:0;filter:drop-shadow(0 1px 2px #001e3a66)}
+.section-badge small{position:relative;display:block;font:800 9px/1 Arial,Helvetica,sans-serif;letter-spacing:.5px;color:#e3f8ff}
+.section-badge-rtu{background:linear-gradient(145deg,#008bc5,#065b92 55%,#083b69)}
+.section-badge-cfg{background:linear-gradient(145deg,#0786b7,#07578b 55%,#12395e)}
+.section-badge-log{background:linear-gradient(145deg,#0b9cc4,#09658f 55%,#08395f)}
+@media(hover:hover){h2:hover>.section-badge{transform:translateY(-2px);box-shadow:inset 0 2px 1px #ffffff55,0 5px 12px #0369a144}}
+@media(max-width:560px){.section-badge{flex-basis:58px;width:58px;height:52px;border-radius:12px}.section-badge svg{width:31px;height:31px}.section-badge small{font-size:8px}}
 </style></head><body><main><nav class="ui-toolbar" aria-label="Affichage et langue"><button type="button" id="themeBtn" onclick="toggleTheme()" aria-label="Mode sombre" title="Mode sombre">☾</button><button type="button" id="langBtn" onclick="toggleLanguage()" aria-label="English" title="English">EN</button></nav><header class="brand">
 <img class="brand-logo" src="/img/logo.webp" alt="Logo passerelle Modbus"><div class="brand-version">Version )HTML";
     s += String(version_.c_str());
     s += R"HTML(</div><div><div class="brand-title">Passerelle Modbus RTU ↔ IP</div><div class="brand-sub" data-fr="Passerelle série ↔ réseau" data-en="Serial ↔ network gateway">Passerelle série ↔ réseau</div></div></header>
-<section><h2><span class="section-badge" aria-hidden="true"><span>Modbus</span><strong>IP</strong><small>TCP · UDP</small></span>1. Modbus IP</h2><div class="tcp-layout"><div class="tcp-col"><div><label>Mode</label><select name="mode" form="cfg">)HTML";
+<section><h2><span class="section-badge section-badge-ip" aria-hidden="true"><svg viewBox="0 0 44 44" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="22" cy="22" r="13"/><path d="M9 22h26M22 9c-8 8-8 18 0 26M22 9c8 8 8 18 0 26"/><path d="M34 11l4-4m-1 7h6"/></svg><small>IP</small></span>1. Modbus IP</h2><div class="tcp-layout"><div class="tcp-col"><div><label>Mode</label><select name="mode" form="cfg">)HTML";
     s += "<option value=\"CLIENT\"" + String(tcp_mode_ == "CLIENT" ? " selected" : "") + ">Client IP (RTU vers serveur)</option>";
     s += "<option value=\"SERVER\"" + String(tcp_mode_ == "SERVER" ? " selected" : "") + ">Serveur IP (client IP vers RTU)</option>";
     s += R"HTML(</select></div><div><label>Transport</label><select name="transport" form="cfg"><option value="TCP")HTML";
@@ -1741,7 +1747,7 @@ html[data-theme="dark"] pre{background:#080e1b;color:#dbeafe;border:1px solid #3
     s += R"HTML("></div></div>
 <div class="muted tcp-note">Le cache concerne uniquement les lectures Modbus (fonctions 01 à 04). L’option affichée correspond au mode TCP sélectionné ; le réglage de l’autre mode est conservé. Les écritures réussies invalident les réponses mémorisées pour l’Unit ID concerné. 64 entrées maximum.</div>
 </div></section>
-<section><h2><span class="section-badge" aria-hidden="true"><span>Modbus</span><strong>RTU</strong><small>RS485</small></span>2. Paramètres Modbus RTU</h2><div class="grid">
+<section><h2><span class="section-badge section-badge-rtu" aria-hidden="true"><svg viewBox="0 0 44 44" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="11" width="26" height="22" rx="5"/><path d="M14 17h16M14 22h7m4 0h5M14 27h16M22 33v6m-6 0h12"/><circle cx="32" cy="8" r="2"/></svg><small>RTU</small></span>2. Paramètres Modbus RTU</h2><div class="grid">
 <div><label>Baudrate</label><select name="baud" form="cfg">)HTML";
     const uint32_t baud_opts[]={1200,2400,4800,9600,19200,38400,57600,115200};
     for (auto b: baud_opts) { s += "<option value=\""+String(b)+"\""; if (b==cfg_baud_) s+=" selected"; s+=">"+String(b)+"</option>"; }
@@ -1755,7 +1761,7 @@ html[data-theme="dark"] pre{background:#080e1b;color:#dbeafe;border:1px solid #3
 <div id="rtu_id_mode_field"><label>Identifiant Modbus RTU</label><select name="idmode" form="cfg"><option value="auto")HTML"; if (!manual_rtu_id_) s += " selected"; s += R"HTML(>Automatique (adresse reçue)</option><option value="manual")HTML"; if (manual_rtu_id_) s += " selected"; s += R"HTML(>Manuel</option></select></div>
 <div id="rtu_id_manual_field"><label>ID RTU manuel (1–247)</label><input name="rtuid" form="cfg" type="number" min="1" max="247" value=")HTML"; s += String(configured_rtu_id_); s += R"HTML("></div>
 </div></section>
-<section><h2><span class="section-badge" aria-hidden="true"><span>ESP32</span><strong>CFG</strong><small>GPIO · UART</small></span>3. Configuration</h2>
+<section><h2><span class="section-badge section-badge-cfg" aria-hidden="true"><svg viewBox="0 0 44 44" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="12" y="9" width="20" height="27" rx="4"/><path d="M17 15h10v10H17zM8 14h4m-4 7h4m-4 7h4m20-14h4m-4 7h4m-4 7h4M17 36v4m10-4v4"/><circle cx="22" cy="30" r="1.5"/></svg><small>CFG</small></span>3. Configuration</h2>
 <div class="grid">
 <div><label>GPIO TX (-1 = automatique)</label><input name="tx" form="cfg" type="number" min="-1" max="48" value=")HTML"; s += String(tx_gpio_); s += R"HTML("></div>
 <div><label>GPIO RX (-1 = automatique)</label><input name="rx" form="cfg" type="number" min="-1" max="48" value=")HTML"; s += String(rx_gpio_); s += R"HTML("></div>
@@ -1765,7 +1771,7 @@ html[data-theme="dark"] pre{background:#080e1b;color:#dbeafe;border:1px solid #3
 </section>
 <form id="cfg" method="POST" action="/save"><input type="hidden" id="form_lang" name="lang" value="fr"><div class="apply-panel"><div><strong>Enregistrement global</strong><div class="muted">Les paramètres des sections 1, 2 et 3 seront enregistrés ensemble.</div></div><button type="submit">Enregistrer / appliquer</button></div></form>
 <form id="rebootForm" method="POST" action="/reboot"><input type="hidden" id="reboot_lang" name="lang" value="fr"><div class="reboot-panel"><div><strong>Redémarrer la passerelle</strong><div class="muted">Redémarre l’ESP32 sans modifier les paramètres enregistrés.</div></div><button type="submit">Redémarrer</button></div></form>
-<section><h2><span class="section-badge" aria-hidden="true"><span>Modbus</span><strong>LOG</strong><small>RTU · IP</small></span>4. Debug des trames</h2>
+<section><h2><span class="section-badge section-badge-log" aria-hidden="true"><svg viewBox="0 0 44 44" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="10" width="29" height="25" rx="5"/><path d="M12 25h5l3-8 5 14 3-6h5M15 39h15"/><circle cx="34" cy="9" r="3"/></svg><small>LOG</small></span>4. Debug des trames</h2>
 <p class="muted">RTU RX/TX et TCP TX/RX · rafraîchissement automatique toutes les 1,5 s</p>
 <p class="muted">Les tentatives de connexion TCP et les erreurs réseau sont également affichées dans cette fenêtre.</p>
 <p><button id="listenBtn" type="button" onclick="toggleListen()">Arrêter l’écoute RTU</button> <span id="listenState">Écoute RTU active</span></p>
