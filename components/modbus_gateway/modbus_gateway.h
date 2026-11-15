@@ -1870,6 +1870,16 @@ html[data-theme="light"] main>section.dashboard-status .connection-list{backgrou
 html[data-theme="light"] main>section.dashboard-status .connection-entry{background:#d6edf9;color:#14354c}
 html[data-theme="light"] main>section #frames .frame-rtu{color:#59d8ff}
 html[data-theme="light"] main>section #frames .frame-ip{color:#ffd18b}
+
+/* Convenient duplicate action buttons after the frame log. */
+main>.bottom-actions{grid-column:1/-1;grid-row:8;display:flex;justify-content:flex-end;align-items:center;gap:12px;flex-wrap:wrap;padding:16px 18px;background:linear-gradient(125deg,#173555,#10253e);border:1px solid #356d93;border-radius:13px;box-shadow:0 5px 18px #0004}
+main>.bottom-actions button{min-width:155px;min-height:44px;font-size:15px;font-weight:700;padding:10px 16px}
+main>.bottom-actions .bottom-save{background:linear-gradient(#24b86b,#0b7842);border-color:#65e49c}
+main>.bottom-actions .bottom-reboot{background:linear-gradient(#386589,#27415f);border-color:#648eaa}
+main>.bottom-actions .bottom-refresh{background:linear-gradient(#1688d0,#07578d);border-color:#31b3e8}
+html[data-theme="light"] main>.bottom-actions{background:#fff;border-color:#c7dbe9}
+@media(max-width:900px){main>.bottom-actions{grid-column:1;grid-row:auto}}
+@media(max-width:560px){main>.bottom-actions{justify-content:stretch}main>.bottom-actions button{flex:1 1 100%}}
 </style></head><body><main><nav class="ui-toolbar" aria-label="Affichage et langue"><button type="button" id="themeBtn" onclick="toggleTheme()" aria-label="Mode sombre" title="Mode sombre">☾</button><button type="button" id="langBtn" onclick="toggleLanguage()" aria-label="English" title="English">EN</button></nav><header class="brand">
 <img class="brand-logo" src="/img/logo.webp" alt="Logo passerelle Modbus"><div class="brand-version">Version )HTML";
     s += String(version_.c_str());
@@ -2080,7 +2090,7 @@ async function updateListenState(){try{let r=await fetch('/listen');let j=await 
 async function toggleListen(){try{await fetch('/listen',{method:'POST'});await updateListenState();}catch(e){document.getElementById('listenState').textContent=tr('Erreur de commande','Command error');}}
 async function sendManual(){let frame=document.getElementById('rtuFrame').value;let out=document.getElementById('manualResponse');out.textContent=tr('Envoi en cours…','Sending…');try{let r=await fetch('/manual',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'frame='+encodeURIComponent(frame)});const responseText=await r.text();out.textContent=translateValue(responseText);refresh();}catch(e){out.textContent=tr('Erreur de communication avec la passerelle','Gateway communication error');}}
 updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();refreshConnections();},1500);
-</script></main></body></html>)HTML";
+</script><div class="bottom-actions" role="group" aria-label="Actions de la passerelle"><button type="submit" form="cfg" class="bottom-save" data-fr="Enregistrer / appliquer" data-en="Save / apply">Enregistrer / appliquer</button><button type="submit" form="rebootForm" class="bottom-reboot" data-fr="Redémarrer" data-en="Restart">Redémarrer</button><button type="button" class="bottom-refresh" onclick="refresh();refreshConnections();updateListenState();" data-fr="Actualiser" data-en="Refresh">Actualiser</button></div></main></body></html>)HTML";
     return s;
   }
 
