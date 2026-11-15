@@ -1,4 +1,9 @@
-## 1.2.1 — TCP/UDP development branch (2026-11-15)
+## 1.2.1 — TCP/UDP gateway (2026-11-15)
+
+- Published on `main` under the renamed repository `stephdust/my-modbus-rtu-ip-gateway`.
+- Redesigned midnight-blue Web UI with status/connection table, colored RTU/TCP/UDP frame diagnostics, and aligned top toolbar with save, restart, refresh, theme and language controls.
+- Added documentation simulations for TCP Client, TCP Server, UDP Client and UDP Server.
+
 
 - Harmonized the main RTU ↔ IP header artwork and all four section thumbnails; replaced the TCP-only network thumbnail with a TCP/UDP illustration.
 - Display the persistent TCP connection option only in TCP Client mode; hide and disable it for TCP Server and both UDP modes, preserving the stored TCP preference.
