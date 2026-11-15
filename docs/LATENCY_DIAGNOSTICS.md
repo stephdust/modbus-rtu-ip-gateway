@@ -1,6 +1,6 @@
 # Byte-level latency diagnostics
 
-Component release: **1.1.13**
+Original TCP diagnostics introduced in **1.1.13**; current gateway version **1.2.1** supports TCP/UDP. The byte-level timing labels below document the TCP paths specifically. UDP frame diagnostics are available, but do not assume that every TCP socket-specific timing label applies to UDP.
 
 The frame diagnostics now expose receive timing in addition to the transaction-level timings.
 All values are reported in microseconds (`us`) in the Web trace and in the exported text capture.
@@ -52,3 +52,7 @@ The first-byte interval is measured from the start of the response wait to the m
 ## Response cache impact
 
 A `CACHE HIT` bypasses the remote TCP/RTU round trip for that matching read. Compare cache-hit timings with `CACHE MISS` transactions, and choose the TTL based on the acceptable age of process data. The two cache enable settings are independent; only the setting for the selected mode is shown in the Web UI.
+
+## UDP diagnostic considerations
+
+In UDP Client/Server mode, inspect the UDP and RTU frame events in the web diagnostics and exported log. Unlike TCP, UDP does not have a persistent connection or TCP connection-setup latency. The TCP-specific byte-level metrics documented above should not be interpreted as measured UDP timings. See [TCP/UDP behavior](TCP_UDP_DEVELOPMENT.md).
