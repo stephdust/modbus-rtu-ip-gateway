@@ -3,7 +3,7 @@
 
 # System architecture
 
-The gateway supports two complementary operating modes. The role names below describe the role played by the **ESP32 gateway** on each network interface. Each link is bidirectional: requests travel toward the destination device, and responses return along the same path.
+The gateway supports two complementary **directions** (Client and Server) with either **TCP or UDP** transport, giving four combinations. The TCP diagrams below illustrate the TCP variants; UDP uses the same RTU/RS-485 side with MBAP datagrams rather than a TCP stream. The role names below describe the role played by the **ESP32 gateway** on each network interface. Each link is bidirectional: requests travel toward the destination device, and responses return along the same path.
 
 ![System architecture showing TCP Client / RTU Slave mode and TCP Server / RTU Master mode](assets/system-architecture.png)
 
@@ -66,3 +66,11 @@ The gateway has two independent optional caches: RTU-to-TCP in Client mode and T
 ## Client TCP cooperative receive
 
 Normal RTU-originated Client TCP transactions receive the remote response incrementally through the ESPHome loop. This keeps the Web UI and other loop tasks responsive during remote-server processing. The initial TCP connect/reconnect and physical UART transmit completion remain synchronous; this implementation does not reduce the remote server's own response latency. See [Client TCP asynchronous handling](CLIENT_TCP_ASYNC.md).
+
+## UDP transport architecture (v1.2.1)
+
+**UDP Client / RTU Slave:** `RTU master → RS-485 → ESP32 gateway → UDP MBAP datagram → Modbus UDP server`, with a reply in the reverse direction. The gateway checks the configured source IP/port, transaction ID and Unit ID when matching the UDP response. There are no TCP sessions or automatic UDP retries.
+
+**UDP Server / RTU Master:** `Modbus UDP client → MBAP datagram → ESP32 gateway → RS-485 → RTU slave`, with a response sent to the originating UDP IP/port. The gateway processes RS-485 transactions sequentially. In automatic address mode the incoming MBAP Unit ID determines the RTU slave address; in manual mode the configured RTU ID is used while the original Unit ID is retained in the IP response.
+
+**Shared behavior:** Client/Server read caches and the remote timeout policy apply to the selected transport. Persistent connection is TCP Client-only. UDP Server's synchronous RTU wait may delay web responsiveness on an unresponsive downstream device. See [Protocol behavior](PROTOCOL.md) and [TCP/UDP details](TCP_UDP_DEVELOPMENT.md).
