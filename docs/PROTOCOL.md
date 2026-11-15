@@ -5,6 +5,9 @@
 
 ## Operating modes
 
+This document's existing TCP sections describe TCP-specific framing and socket behavior. Version **1.2.1** also supports UDP Client and UDP Server, described below; both use Modbus MBAP framing over UDP datagrams. The UI's Client/Server direction and Unit ID settings apply to the selected transport.
+
+
 ### TCP Client — RTU to TCP
 
 1. The gateway receives an RTU request on the UART/RS-485 interface.
@@ -93,3 +96,25 @@ The gateway validates the Modbus RTU CRC before forwarding any received RTU fram
 ## TCP Client asynchronous response handling
 
 For normal RTU-originated requests in TCP Client mode, the gateway sends the TCP request and receives the MBAP header and response PDU incrementally from the ESPHome loop. It does not block the loop while waiting for the remote server response. The initial connection/reconnection and the physical RS-485 response transmission remain synchronous. See [Client TCP asynchronous handling](CLIENT_TCP_ASYNC.md).
+
+## UDP Client — RTU to UDP
+
+1. Receive an RTU request and validate its CRC.
+2. Encode its Unit ID and PDU into one MBAP datagram and send it to the configured numeric IPv4 address and UDP port.
+3. Accept a response only from the configured IP/port with matching transaction and Unit IDs.
+4. Convert the valid reply to RTU and transmit it on RS-485.
+
+UDP is connectionless: there is no persistent connection, and the gateway does not automatically retransmit UDP requests. Lost, late, malformed or unmatched replies must be handled through the configured timeout behavior.
+
+## UDP Server — UDP to RTU
+
+1. Bind the configured UDP port and validate the incoming MBAP datagram (protocol ID and length).
+2. Resolve the RTU destination: automatic uses the incoming MBAP Unit ID; manual uses the configured RTU ID (1–247).
+3. Send the request on RS-485 and wait for the RTU response, validating its CRC.
+4. Reply to the source UDP IP/port, retaining the original incoming MBAP Unit ID.
+
+The RS-485 bus is half-duplex and transactions are serialized. UDP Server's RTU wait remains synchronous, so a silent RTU slave may delay other gateway work until timeout. UDP does not guarantee delivery or ordering. The existing TCP Server four-connection limit is **not** a UDP session limit.
+
+## Transport-aware web settings
+
+**Persistent TCP connection** is available only in TCP Client. The Client and Server cache options are shared across TCP/UDP; the cache TTL input appears only while the currently selected mode's cache is enabled. For detailed limitations and user-reported tests, see [TCP/UDP development](TCP_UDP_DEVELOPMENT.md).
