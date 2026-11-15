@@ -11,11 +11,17 @@ In the custom component YAML, use `transport: TCP` (default) or `transport: UDP`
 - **Cache**: the existing client/server read caches are shared across the selected transport, and writes invalidate matching entries.
 - **TCP**: remains the default transport.
 
-## Important limitations
+## Validation status (15 November 2026)
 
-**Experimental / not yet validated on ESP32-S3 hardware.** The source has been committed, but an ESPHome/Arduino firmware build and physical RS485 tests have **not** been completed. Do not deploy on a production Modbus network before verification.
+The maintainer reports a successful ESPHome firmware build, installation on the ESP32-S3, and functional tests of **TCP Client, TCP Server, UDP Client and UDP Server**. Reported UDP checks include FC03/FC04 reads, FC06/FC16 writes, automatic/manual RTU ID and caching. These are user-reported functional tests, not independent protocol conformance or robustness certification. Timeout, malformed-frame, network-loss and concurrent-client stress testing remain outstanding. Do not deploy on a production Modbus network without validating the target installation.
 
 The UDP Server currently uses the existing synchronous RTU response wait (up to `tcp_timeout`), which can delay web UI responsiveness while a slave is silent. UDP is connectionless and does not guarantee delivery or ordering. Only numeric IPv4 addresses are supported for UDP Client configuration. UDP packets with invalid MBAP lengths or protocol ID are discarded.
+
+## Web interface behavior
+
+Section **1. Modbus IP** provides the TCP/UDP transport selector and Client/Server mode selector. The **Persistent TCP connection** checkbox is **visible and enabled only in TCP Client mode**; it is hidden and disabled for TCP Server, UDP Client and UDP Server. The UI updates immediately when either selector changes, without reloading the page. The saved TCP preference is retained when switching to UDP and is not overwritten by a hidden disabled checkbox.
+
+The header uses the RTU ↔ IP gateway artwork with caches on both sides. The four section thumbnails (Modbus IP, Modbus RTU, ESP32 Configuration and frame diagnostics) use a consistent blue/cyan style and matching dimensions. The Modbus IP thumbnail now explicitly illustrates **TCP / UDP**, replacing the legacy TCP-only thumbnail. FR/EN and light/dark UI controls remain available.
 
 ## Suggested validation
 
@@ -27,4 +33,6 @@ The UDP Server currently uses the existing synchronous RTU response wait (up to 
 
 ## État du développement (français)
 
-Les modes UDP Client et UDP Serveur ont été ajoutés au code sur cette branche. **Ils ne sont pas encore compilés ni validés sur matériel.** La version TCP fonctionnelle reste sur `main`. Avant une mise en service, compiler avec ESPHome/Arduino et effectuer les essais RTU/UDP et les tests de non-régression TCP.
+La branche a été compilée et installée sur ESP32-S3. Selon les essais communiqués par l'utilisateur, les **quatre modes TCP/UDP Client/Serveur fonctionnent**, y compris les lectures FC03/04, écritures FC06/16, ID RTU automatique/manuel et cache en UDP. Les tests de robustesse restent à effectuer. La branche stable TCP demeure sur `main`.
+
+Dans l'interface, **Connexion TCP persistante** est affichée uniquement en **TCP Client** et masquée en TCP Serveur, UDP Client et UDP Serveur ; le changement est immédiat. Le réglage TCP enregistré est conservé lors du passage en UDP. Les quatre petits logos sont harmonisés avec le logo principal, et le pictogramme Modbus IP indique désormais **TCP/UDP**.
