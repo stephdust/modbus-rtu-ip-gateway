@@ -98,6 +98,10 @@ The `TCP CONNECT` diagnostics display the station IP reported by ESPHome's Wi-Fi
 
 The gateway intentionally drops RTU frames with an invalid CRC. In TCP Client mode, the bad RTU request is not sent to the remote TCP server. In TCP Server mode, the bad RTU response is not forwarded as response data and the TCP client receives gateway exception `0x0B`. Check baud rate, parity, stop bits, A+/B− polarity, shielding, termination and RS-485 direction control. Do not disable CRC validation to work around an electrical or serial-format problem.
 
+## TCP/UDP transport mismatch
+
+**Check both ends:** A Modbus IP client configured for **TCP** requires a Modbus **TCP** server; a client configured for **UDP** requires a Modbus **UDP** server. **TCP Client ↔ TCP Server** and **UDP Client ↔ UDP Server** are valid pairs. A shared port number such as **502** does **not** allow TCP and UDP to communicate directly. If requests time out or no response arrives, verify the selected transport on **both** the gateway and its corresponding IP peer before checking the RS-485 wiring.
+
 ## UDP troubleshooting (v1.2.1)
 
 - **No UDP Client response:** confirm Transport = UDP, Mode = Client, numeric IPv4 destination, correct UDP port and firewall rules. Unlike TCP, UDP has no connected socket and no automatic retries; packet loss or mismatched source IP/port, transaction ID or Unit ID can cause the response to be ignored.
