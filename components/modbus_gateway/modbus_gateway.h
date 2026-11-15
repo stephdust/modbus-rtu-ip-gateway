@@ -1829,6 +1829,33 @@ main>section:nth-of-type(1),main>section:nth-of-type(2),main>section:nth-of-type
 html[data-theme="light"] main>form#cfg>.apply-panel,html[data-theme="light"] main>form#rebootForm>.reboot-panel{background:#fff;color:#17202a;border-color:#c7dbe9}
 html[data-theme="light"] main>form#cfg>.apply-panel strong,html[data-theme="light"] main>form#rebootForm>.reboot-panel strong{color:#12345a}
 html[data-theme="light"] main>section.dashboard-counters .counter-grid>div{background:#e7f3ff;color:#12345a}
+
+/* Midnight-blue theme: intentionally overrides earlier light-theme defaults. */
+html,html[data-theme="dark"]{background:#081321}
+html[data-theme="dark"] body{background:#081321;color:#e8f4ff;font-size:16px}
+html[data-theme="dark"] main>.brand{background:linear-gradient(145deg,#102a47,#0a192b);border:1px solid #246e9b;color:#e8f4ff}
+html[data-theme="dark"] main>.brand .brand-title{color:#e9f6ff}
+html[data-theme="dark"] main>.brand .brand-version,html[data-theme="dark"] main>.brand .brand-sub{color:#b5d7eb}
+html[data-theme="dark"] main>section{background:linear-gradient(150deg,#132a47,#0c1c31);border:1px solid #356d93;color:#eaf5ff;box-shadow:0 5px 20px #0005}
+html[data-theme="dark"] main>section>h2{background:linear-gradient(110deg,#23517c,#153755);color:#f3faff;border-bottom:1px solid #3b83ae}
+html[data-theme="dark"] main>section label,html[data-theme="dark"] main>section .muted{color:#c3dbee}
+html[data-theme="dark"] main>section input:not([type="checkbox"]),html[data-theme="dark"] main>section select{background:#08182b;color:#f6fbff;border:1px solid #608bac;opacity:1}
+html[data-theme="dark"] main>section input::placeholder{color:#a7bdd1;opacity:1}
+html[data-theme="dark"] main>section select option{background:#0c2037;color:#f5faff}
+html[data-theme="dark"] main>section input:focus,html[data-theme="dark"] main>section select:focus{border-color:#43d5ff;outline:2px solid #137eb2}
+html[data-theme="dark"] main>section input[type="checkbox"]{accent-color:#24c5ee}
+html[data-theme="dark"] main button,html[data-theme="dark"] main .button-link{color:#fff;background:linear-gradient(#2187c2,#095486);border:1px solid #4bbce9;opacity:1;text-shadow:none}
+html[data-theme="dark"] main button:disabled{opacity:.5}
+html[data-theme="dark"] main>form#cfg>.apply-panel,html[data-theme="dark"] main>form#rebootForm>.reboot-panel{background:linear-gradient(125deg,#183654,#10253e);color:#eaf6ff;border-color:#356d93}
+html[data-theme="dark"] main>form#cfg>.apply-panel strong,html[data-theme="dark"] main>form#rebootForm>.reboot-panel strong{color:#fff}
+html[data-theme="dark"] main>form#cfg>.apply-panel .muted,html[data-theme="dark"] main>form#rebootForm>.reboot-panel .muted{color:#c2d9ea}
+html[data-theme="dark"] main>form#cfg button{background:linear-gradient(#24b86b,#0b7842);border-color:#65e49c}
+html[data-theme="dark"] main>section.dashboard-status .status-content strong{color:#7cf0b3}
+html[data-theme="dark"] main>section.dashboard-counters .counter-grid>div{background:#0a2038;border-color:#3677a0;color:#e6f4ff}
+html[data-theme="dark"] main>section.dashboard-counters output{color:#73dcff}
+html[data-theme="dark"] main>section pre{background:#061121;color:#dceeff;border:1px solid #3b6687;opacity:1}
+html[data-theme="dark"] main>section #frames{color:#e5f3ff;font-size:14px;line-height:1.55}
+@media(min-width:901px){main{width:min(100%,1320px)}}
 </style></head><body><main><nav class="ui-toolbar" aria-label="Affichage et langue"><button type="button" id="themeBtn" onclick="toggleTheme()" aria-label="Mode sombre" title="Mode sombre">☾</button><button type="button" id="langBtn" onclick="toggleLanguage()" aria-label="English" title="English">EN</button></nav><header class="brand">
 <img class="brand-logo" src="/img/logo.webp" alt="Logo passerelle Modbus"><div class="brand-version">Version )HTML";
     s += String(version_.c_str());
@@ -1987,10 +2014,10 @@ function setTheme(theme){
   if(btn)btn.textContent=dark?'☀':'☾';
   const themeLabel=currentLanguage==='en'?(dark?'Light mode':'Dark mode'):(dark?'Mode clair':'Mode sombre');
   if(btn){btn.title=themeLabel;btn.setAttribute('aria-label',themeLabel);}
-  try{localStorage.setItem('modbus_theme',dark?'dark':'light');}catch(e){}
+  try{localStorage.setItem('modbus_theme_v2',dark?'dark':'light');}catch(e){}
 }
 function toggleTheme(){setTheme(document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark');}
-try{setTheme(localStorage.getItem('modbus_theme')==='light'?'light':'dark');}catch(e){setTheme('dark');}
+try{setTheme(localStorage.getItem('modbus_theme_v2')==='light'?'light':'dark');}catch(e){setTheme('dark');}
 function toggleLanguage(){currentLanguage=currentLanguage==='fr'?'en':'fr';document.getElementById('form_lang').value=currentLanguage;document.getElementById('reboot_lang').value=currentLanguage;applyLanguage();setTheme(document.documentElement.getAttribute('data-theme'));}
 function toggleRtuId(){const isServer=document.querySelector('select[name=mode]').value==='SERVER';document.getElementById('rtu_id_mode_field').style.display=isServer?'block':'none';document.getElementById('rtu_id_manual_field').style.display=(isServer&&document.querySelector('select[name=idmode]').value==='manual')?'block':'none';}document.querySelector('select[name=idmode]').addEventListener('change',toggleRtuId);document.querySelector('select[name=mode]').addEventListener('change',toggleRtuId);toggleRtuId();
 function crc16Modbus(bytes){let crc=0xFFFF;for(const b of bytes){crc^=b;for(let i=0;i<8;i++)crc=(crc&1)?((crc>>>1)^0xA001):(crc>>>1);}return crc&0xFFFF;}
