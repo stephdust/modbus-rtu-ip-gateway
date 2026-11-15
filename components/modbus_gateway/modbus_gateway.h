@@ -1687,35 +1687,35 @@ class ModbusGateway : public Component {
 </style></head><body><main><button type="button" id="langBtn" onclick="toggleLanguage()" style="float:right">English</button><header class="brand">
 <img class="brand-logo" src="/img/logo.webp" alt="Logo passerelle Modbus"><div class="brand-version">Version )HTML";
     s += String(version_.c_str());
-    s += R"HTML(</div><div><div class="brand-title">Passerelle Modbus RTU ↔ TCP</div><div class="brand-sub" data-fr="Passerelle série ↔ réseau" data-en="Serial ↔ network gateway">Passerelle série ↔ réseau</div></div></header>
-<section><h2><img class="section-icon" src="/img/modbus-tcp.jpg" alt="">1. Modbus TCP</h2><div class="tcp-layout"><div class="tcp-col"><div><label>Mode</label><select name="mode" form="cfg">)HTML";
-    s += "<option value=\"CLIENT\"" + String(tcp_mode_ == "CLIENT" ? " selected" : "") + ">Client TCP (RTU vers serveur)</option>";
-    s += "<option value=\"SERVER\"" + String(tcp_mode_ == "SERVER" ? " selected" : "") + ">Serveur TCP (client TCP vers RTU)</option>";
+    s += R"HTML(</div><div><div class="brand-title">Passerelle Modbus RTU ↔ IP</div><div class="brand-sub" data-fr="Passerelle série ↔ réseau" data-en="Serial ↔ network gateway">Passerelle série ↔ réseau</div></div></header>
+<section><h2><img class="section-icon" src="/img/modbus-tcp.jpg" alt="">1. Modbus IP</h2><div class="tcp-layout"><div class="tcp-col"><div><label>Mode</label><select name="mode" form="cfg">)HTML";
+    s += "<option value=\"CLIENT\"" + String(tcp_mode_ == "CLIENT" ? " selected" : "") + ">Client IP (RTU vers serveur)</option>";
+    s += "<option value=\"SERVER\"" + String(tcp_mode_ == "SERVER" ? " selected" : "") + ">Serveur IP (client IP vers RTU)</option>";
     s += R"HTML(</select></div><div><label>Transport</label><select name="transport" form="cfg"><option value="TCP")HTML";
     if (transport_ == "TCP") s += " selected";
     s += R"HTML(>TCP</option><option value="UDP")HTML";
     if (transport_ == "UDP") s += " selected";
     s += R"HTML(>UDP</option></select></div>
-<div id="host_field"><label>Adresse IP du serveur Modbus TCP</label><input id="host_input" name="host" form="cfg" value=")HTML";
+<div id="host_field"><label>Adresse IP du serveur Modbus</label><input id="host_input" name="host" form="cfg" value=")HTML";
     s += cfg_host_.c_str();
-    s += R"HTML("></div><div><label>Port Modbus TCP</label><input name="port" form="cfg" type="number" min="1" max="65535" value=")HTML";
+    s += R"HTML("></div><div><label>Port Modbus IP</label><input name="port" form="cfg" type="number" min="1" max="65535" value=")HTML";
     s += String(cfg_port_);
     s += R"HTML("></div><div><label>Comportement en cas de timeout distant</label><select name="timeout_behavior" form="cfg"><option value="standard")HTML";
     if (!silent_on_timeout_) s += " selected";
     s += R"HTML(>Standard : envoyer une exception Modbus</option><option value="silent")HTML";
     if (silent_on_timeout_) s += " selected";
-    s += R"HTML(>Silencieux : ne pas répondre</option></select><p class="muted">S’applique aux deux modes TCP. En mode silencieux, seule l’absence de réponse distante déclenche le silence ; les erreurs de trame CRC restent signalées.</p></div></div>
-<div class="tcp-col"><div><label>Timeout TCP (secondes)</label><input name="timeout" form="cfg" type="number" min="1" max="30" value=")HTML";
+    s += R"HTML(>Silencieux : ne pas répondre</option></select><p class="muted">S’applique aux modes Client et Serveur. En mode silencieux, seule l’absence de réponse distante déclenche le silence ; les erreurs de trame CRC restent signalées.</p></div></div>
+<div class="tcp-col"><div><label>Timeout réseau (secondes)</label><input name="timeout" form="cfg" type="number" min="1" max="30" value=")HTML";
     s += String(tcp_timeout_ms_ / 1000);
     s += R"HTML("></div><div id="persistent_tcp_field"><label class="check-label"><input type="checkbox" name="persistent" value="1" form="cfg")HTML";
     if (tcp_persistent_) s += " checked";
     s += R"HTML(> Connexion TCP persistante</label><p class="muted">Garde la connexion ouverte entre les requêtes RTU pour réduire la latence (mode Client TCP uniquement).</p></div>
 <div id="cache_client_field"><label class="check-label"><input type="checkbox" name="cache_client" value="1" form="cfg")HTML";
     if (cache_client_enabled_) s += " checked";
-    s += R"HTML(> Activer le cache en mode Client TCP (RTU → TCP)</label></div>
+    s += R"HTML(> Activer le cache en mode Client IP (RTU → IP)</label></div>
 <div id="cache_server_field"><label class="check-label"><input type="checkbox" name="cache_server" value="1" form="cfg")HTML";
     if (cache_server_enabled_) s += " checked";
-    s += R"HTML(> Activer le cache en mode Serveur TCP (TCP → RTU)</label></div>
+    s += R"HTML(> Activer le cache en mode Serveur IP (IP → RTU)</label></div>
 <div><label>Durée de validité du cache (ms)</label><input name="cache_ttl" form="cfg" type="number" min="50" max="10000" value=")HTML";
     s += String(cache_ttl_ms_);
     s += R"HTML("></div></div>
@@ -1752,17 +1752,17 @@ class ModbusGateway : public Component {
 <div style="margin-top:14px"><label for="rtuFrame">Trame RTU à envoyer (hexadécimal, avec adresse et CRC, ex. 0B 03 00 00 00 01 84 A0)</label>
 <input id="rtuFrame" placeholder="0B 03 00 00 00 01 ... CRC" autocomplete="off">
 <button type="button" onclick="sendManual()" style="margin-top:10px">Envoyer au serveur TCP</button></div>
-<p class="muted">Réponse du serveur Modbus TCP :</p><pre id="manualResponse">Aucune requête manuelle</pre>
+<p class="muted">Réponse du serveur Modbus IP :</p><pre id="manualResponse">Aucune requête manuelle</pre>
 <p style="margin-bottom:6px"><button type="button" onclick="clearFrames()">Vider l’affichage des trames</button> <a class="button-link" href="/frames.txt">Exporter la capture des trames (.txt)</a></p>
 <p class="muted">L’export contient les 64 dernières entrées mémorisées, y compris les mesures de latence.</p>
 <pre id="frames">Chargement des trames…</pre></section>
 <script>
 let currentLanguage='fr';
 const translations={
-'Mode':'Mode','Client TCP (RTU vers serveur)':'TCP client (RTU to server)','Serveur TCP (client TCP vers RTU)':'TCP server (TCP client to RTU)',
+'Mode':'Mode','Client IP (RTU vers serveur)':'TCP client (RTU to server)','Serveur IP (client IP vers RTU)':'TCP server (TCP client to RTU)',
 'Connexion TCP persistante':'Persistent TCP connection','Garde la connexion ouverte entre les requêtes RTU pour réduire la latence (mode Client TCP uniquement).':'Keep the connection open between RTU requests to reduce latency (TCP Client mode only).','Redémarrer la passerelle':'Restart gateway','Redémarrer':'Restart','Redémarre l’ESP32 sans modifier les paramètres enregistrés.':'Restart the ESP32 without changing saved settings.',
-'Adresse IP du serveur Modbus TCP':'Modbus TCP server IP address','Port Modbus TCP':'Modbus TCP port','Timeout TCP (secondes)':'TCP timeout (seconds)','Comportement en cas de timeout distant':'Behavior when the remote device times out','Standard : envoyer une exception Modbus':'Standard: send a Modbus exception','Silencieux : ne pas répondre':'Silent: do not reply','S’applique aux deux modes TCP. En mode silencieux, seule l’absence de réponse distante déclenche le silence ; les erreurs de trame CRC restent signalées.':'Applies to both TCP modes. Silent mode is used only when the remote device does not respond; CRC frame errors are still reported.',
-'Activer le cache en mode Client TCP (RTU → TCP)':'Enable cache in TCP Client mode (RTU → TCP)','Activer le cache en mode Serveur TCP (TCP → RTU)':'Enable cache in TCP Server mode (TCP → RTU)','Durée de validité du cache (ms)':'Cache time-to-live (ms)','Le cache concerne uniquement les lectures Modbus (fonctions 01 à 04). L’option affichée correspond au mode TCP sélectionné ; le réglage de l’autre mode est conservé. Les écritures réussies invalident les réponses mémorisées pour l’Unit ID concerné. 64 entrées maximum.':'The cache stores only Modbus read requests (functions 01 to 04). Only the option for the selected TCP mode is shown; the other mode’s setting is preserved. Successful writes invalidate cached responses for the affected Unit ID. Maximum 64 entries.',
+'Adresse IP du serveur Modbus':'Modbus server IP address','Port Modbus IP':'Modbus IP port','Timeout réseau (secondes)':'Network timeout (seconds)','Comportement en cas de timeout distant':'Behavior when the remote device times out','Standard : envoyer une exception Modbus':'Standard: send a Modbus exception','Silencieux : ne pas répondre':'Silent: do not reply','S’applique aux modes Client et Serveur. En mode silencieux, seule l’absence de réponse distante déclenche le silence ; les erreurs de trame CRC restent signalées.':'Applies to both TCP modes. Silent mode is used only when the remote device does not respond; CRC frame errors are still reported.',
+'Activer le cache en mode Client IP (RTU → IP)':'Enable cache in TCP Client mode (RTU → TCP)','Activer le cache en mode Serveur IP (IP → RTU)':'Enable cache in TCP Server mode (TCP → RTU)','Durée de validité du cache (ms)':'Cache time-to-live (ms)','Le cache concerne uniquement les lectures Modbus (fonctions 01 à 04). L’option affichée correspond au mode TCP sélectionné ; le réglage de l’autre mode est conservé. Les écritures réussies invalident les réponses mémorisées pour l’Unit ID concerné. 64 entrées maximum.':'The cache stores only Modbus read requests (functions 01 to 04). Only the option for the selected TCP mode is shown; the other mode’s setting is preserved. Successful writes invalidate cached responses for the affected Unit ID. Maximum 64 entries.',
 'CACHE TROUVÉ':'CACHE HIT','CACHE ABSENT':'CACHE MISS','CACHE ENREGISTRÉ':'CACHE STORE','CACHE INVALIDÉ':'CACHE INVALIDATE','Mode Client':'Client mode','Mode Serveur':'Server mode','Fonction=':'Function=','Adresse=':'Address=','Quantité=':'Quantity=','Âge=':'Age=','Entrées=':'Entries=','Opération réussie hors lecture.':'Successful non-read operation.',
 'Baudrate':'Baud rate','Data bits':'Data bits','Parity':'Parity','Stop bits':'Stop bits',
 'GPIO TX (-1 = automatique)':'TX GPIO (-1 = automatic)','GPIO RX (-1 = automatique)':'RX GPIO (-1 = automatic)','GPIO DE/RE/EN (-1 = automatique)':'DE/RE/EN GPIO (-1 = automatic)',
@@ -1773,7 +1773,7 @@ const translations={
 'Les tentatives de connexion TCP et les erreurs réseau sont également affichées dans cette fenêtre.':'TCP connection attempts and network errors are also displayed in this window.',
 'Arrêter l’écoute RTU':'Stop RTU listening','Reprendre l’écoute RTU':'Resume RTU listening','Écoute RTU active':'RTU listening','Écoute RTU suspendue':'RTU listening paused','Erreur de commande':'Command error',
 'Trame RTU à envoyer (hexadécimal, avec adresse et CRC, ex. 0B 03 00 00 00 01 84 A0)':'RTU frame to send (hexadecimal, including address and CRC, e.g. 0B 03 00 00 00 01 84 A0)',
-'Envoyer au serveur TCP':'Send to TCP server','Réponse du serveur Modbus TCP :':'Modbus TCP server response:','Aucune requête manuelle':'No manual request','Vider l’affichage des trames':'Clear frame log','Exporter la capture des trames (.txt)':'Export frame capture (.txt)','L’export contient les 64 dernières entrées mémorisées, y compris les mesures de latence.':'The export contains the 64 most recent stored entries, including timing diagnostics.','Chargement des trames…':'Loading frames…','Aucune trame':'No frames',
+'Envoyer au serveur TCP':'Send to TCP server','Réponse du serveur Modbus IP :':'Modbus IP server response:','Aucune requête manuelle':'No manual request','Vider l’affichage des trames':'Clear frame log','Exporter la capture des trames (.txt)':'Export frame capture (.txt)','L’export contient les 64 dernières entrées mémorisées, y compris les mesures de latence.':'The export contains the 64 most recent stored entries, including timing diagnostics.','Chargement des trames…':'Loading frames…','Aucune trame':'No frames',
 'CRC Erreur':'CRC Error','CRC ERROR':'Erreur CRC','RTU ERROR':'Erreur RTU','Client mode | RTU request discarded; Unit ID=':'Mode Client | requête RTU rejetée ; ID unité=','Server mode | RTU response discarded; RTU Unit ID=':'Mode Serveur | réponse RTU rejetée ; ID unité RTU=','Server mode | No complete RTU response; Unit ID=':'Mode Serveur | aucune réponse RTU complète ; ID unité=','; Function=':'; fonction=','; bytes=':'; octets=','; received=0x':'; CRC reçu=0x','; calculated=0x':'; CRC calculé=0x','; total CRC errors=':'; total erreurs CRC=','. TCP gateway exception 0x0B returned.':'. Exception passerelle TCP 0x0B renvoyée.','Erreur':'Error','CRC OK':'CRC OK','Envoi en cours…':'Sending…','Erreur de communication avec la passerelle':'Gateway communication error',
 'Erreur : saisir une trame RTU complète en hexadécimal (adresse, fonction, données, CRC).':'Error: enter a complete RTU frame in hexadecimal (address, function, data, CRC).',
 'Erreur : caractère hexadécimal invalide.':'Error: invalid hexadecimal character.',
@@ -1818,8 +1818,8 @@ const translations={
 'Pending RTU input buffer overflow; buffered bytes discarded.':'Débordement du tampon RTU en attente ; les octets mémorisés ont été supprimés.',
 'Une transaction RTU/TCP est en cours. Réessayez après sa réponse.':'An RTU/TCP transaction is in progress. Retry after its response.',
 'Réponse TCP (PDU) :':'TCP response (PDU):','Réponse RTU complète :':'Complete RTU response:',
-'Passerelle série ↔ réseau':'Serial ↔ network gateway','Passerelle Modbus RTU ↔ TCP':'Modbus RTU ↔ TCP Gateway',
-'1. Modbus TCP':'1. Modbus TCP','2. Paramètres Modbus RTU':'2. Modbus RTU settings','3. Configuration':'3. Configuration','4. Debug des trames':'4. Frame diagnostics'
+'Passerelle série ↔ réseau':'Serial ↔ network gateway','Passerelle Modbus RTU ↔ IP':'Modbus RTU ↔ IP Gateway',
+'1. Modbus IP':'1. Modbus IP','2. Paramètres Modbus RTU':'2. Modbus RTU settings','3. Configuration':'3. Configuration','4. Debug des trames':'4. Frame diagnostics'
 };
 function tr(fr,en){return currentLanguage==='fr'?fr:en;}
 function translateValue(value){const pairs=Object.entries(translations).map(([fr,en])=>currentLanguage==='en'?[fr,en]:[en,fr]).sort((a,b)=>b[0].length-a[0].length);let out=value;for(const [from,to] of pairs){if(from)out=out.split(from).join(to);}return out;}
