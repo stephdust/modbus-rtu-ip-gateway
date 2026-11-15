@@ -1747,7 +1747,7 @@ html[data-theme="dark"] pre{background:#080e1b;color:#dbeafe;border:1px solid #3
 <div id="cache_server_field"><label class="check-label"><input type="checkbox" name="cache_server" value="1" form="cfg")HTML";
     if (cache_server_enabled_) s += " checked";
     s += R"HTML(> Activer le cache en mode Serveur IP (IP → RTU)</label></div>
-<div><label>Durée de validité du cache (ms)</label><input name="cache_ttl" form="cfg" type="number" min="50" max="10000" value=")HTML";
+<div id="cache_ttl_field"><label>Durée de validité du cache (ms)</label><input name="cache_ttl" form="cfg" type="number" min="50" max="10000" value=")HTML";
     s += String(cache_ttl_ms_);
     s += R"HTML("></div></div>
 <div class="muted tcp-note">Le cache concerne uniquement les lectures Modbus (fonctions 01 à 04). L’option affichée correspond au mode TCP sélectionné ; le réglage de l’autre mode est conservé. Les écritures réussies invalident les réponses mémorisées pour l’Unit ID concerné. 64 entrées maximum.</div>
@@ -1881,8 +1881,10 @@ function crc16Modbus(bytes){let crc=0xFFFF;for(const b of bytes){crc^=b;for(let 
 function toggleHostField(){const isServer=document.querySelector('select[name="mode"]').value==='SERVER';const isTcp=document.querySelector('select[name="transport"]').value==='TCP';document.getElementById('host_field').style.display=isServer?'none':'block';document.getElementById('host_input').required=!isServer;const persistentField=document.getElementById('persistent_tcp_field');const persistentInput=document.querySelector('input[name="persistent"]');const showPersistent=!isServer&&isTcp;persistentField.style.display=showPersistent?'block':'none';persistentInput.disabled=!showPersistent;}
 document.querySelector('select[name="mode"]').addEventListener('change',toggleHostField);
 document.querySelector('select[name="transport"]').addEventListener('change',toggleHostField);toggleHostField();
-function toggleCacheFields(){const isClient=document.querySelector('select[name="mode"]').value==='CLIENT';document.getElementById('cache_client_field').style.display=isClient?'block':'none';document.getElementById('cache_server_field').style.display=isClient?'none':'block';}
-document.querySelector('select[name="mode"]').addEventListener('change',toggleCacheFields);toggleCacheFields();
+function toggleCacheFields(){const isClient=document.querySelector('select[name="mode"]').value==='CLIENT';document.getElementById('cache_client_field').style.display=isClient?'block':'none';document.getElementById('cache_server_field').style.display=isClient?'none':'block';const activeCache=document.querySelector('input[name="'+(isClient?'cache_client':'cache_server')+'"]');document.getElementById('cache_ttl_field').style.display=activeCache.checked?'block':'none';}
+document.querySelector('select[name="mode"]').addEventListener('change',toggleCacheFields);
+document.querySelector('input[name="cache_client"]').addEventListener('change',toggleCacheFields);
+document.querySelector('input[name="cache_server"]').addEventListener('change',toggleCacheFields);toggleCacheFields();
 function escapeHtml(value){return String(value).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
 function formatFrame(x){const prefix=x.time+' | '+translateValue(x.dir)+' | ';const isRtu=x.dir.startsWith('RTU')||x.dir==='MANUAL RTU';const bytes=x.hex.trim().split(/\s+/).filter(Boolean);if(!isRtu||bytes.length<3)return prefix+escapeHtml(translateValue(x.hex));const vals=bytes.map(b=>parseInt(b,16));if(vals.some(v=>!Number.isFinite(v)))return prefix+x.hex;const calculated=crc16Modbus(vals.slice(0,-2));const crcOk=vals[vals.length-2]===(calculated&255)&&vals[vals.length-1]===((calculated>>8)&255);const payload=bytes.slice(0,-2).join(' ');const crc='<span class=\"crc-byte\">'+bytes[bytes.length-2]+'</span> <span class=\"crc-byte\">'+bytes[bytes.length-1]+'</span>';return prefix+payload+' '+crc+'  <span class=\"'+(crcOk?'crc-ok':'crc-bad')+'\">CRC '+(crcOk?'OK':tr('Erreur','Error'))+'</span>';}
 async function refresh(){try{let r=await fetch('/frames');let j=await r.json();document.getElementById('frames').innerHTML=j.frames.map(formatFrame).join('\n')||tr('Aucune trame','No frames');}catch(e){}}
