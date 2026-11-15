@@ -1762,6 +1762,42 @@ html[data-theme="light"] pre{background:#101827;color:#dbeafe}
  main>section #frames{min-height:230px}
 }
 @media(max-width:560px){body{padding:10px 8px}main{gap:12px}main>section>h2{padding:9px 12px;font-size:16px}main>section>.tcp-layout,main>section>.grid{padding:0 12px}main>section>div:not(.tcp-layout),main>section>p,main>section>pre{margin-left:12px;margin-right:12px}}
+
+/* Dashboard v2: readable desktop layout, no empty grid tracks, full-width diagnostics */
+html{background:#0a1424}
+body{font-size:16px;line-height:1.5}
+main{width:min(100%,1440px);max-width:1440px;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:start}
+main>.ui-toolbar{grid-row:1;grid-column:1/-1}
+main>.brand{grid-row:2;grid-column:1/-1}
+main>section:nth-of-type(1){grid-column:1;grid-row:3}
+main>section:nth-of-type(2){grid-column:2;grid-row:3}
+main>section:nth-of-type(3){grid-column:1;grid-row:4}
+main>section:nth-of-type(4){grid-column:1/-1;grid-row:6}
+main>.apply-panel{grid-column:1;grid-row:5}
+main>.reboot-panel{grid-column:2;grid-row:5}
+main>section{padding-bottom:20px}
+main>section>h2{min-height:unset;padding:12px 18px;margin-bottom:18px;font-size:20px}
+main>section label{font-size:15px;line-height:1.45}
+main>section input,main>section select{font-size:15px;min-height:42px;padding:8px 10px}
+main>section .muted{font-size:13px;line-height:1.55}
+main>section #frames{min-height:310px;max-height:520px;font-size:13px;line-height:1.55;white-space:pre;overflow:auto}
+main>.apply-panel,main>.reboot-panel{grid-row:5;min-height:96px;display:flex;align-items:center;justify-content:space-between;gap:14px}
+main>.apply-panel button,main>.reboot-panel button{min-width:145px}
+main .section-badge{flex-shrink:0}
+main>.brand .brand-logo{width:100%;max-width:1200px}
+@media(min-width:1100px){main>section:nth-of-type(1) .grid,main>section:nth-of-type(2) .grid{column-gap:18px;row-gap:12px}}
+@media(max-width:900px){
+ main{grid-template-columns:minmax(0,1fr);gap:14px}
+ main>.ui-toolbar,main>.brand,main>section:nth-of-type(1),main>section:nth-of-type(2),main>section:nth-of-type(3),main>section:nth-of-type(4),main>.apply-panel,main>.reboot-panel{grid-column:1;grid-row:auto}
+ main>.apply-panel,main>.reboot-panel{min-height:unset}
+}
+@media(max-width:600px){
+ body{font-size:15px}
+ main>section>h2{font-size:17px;padding:10px 12px}
+ main>section label{font-size:14px}
+ main>.apply-panel,main>.reboot-panel{flex-wrap:wrap}
+ main>section #frames{min-height:220px}
+}
 </style></head><body><main><nav class="ui-toolbar" aria-label="Affichage et langue"><button type="button" id="themeBtn" onclick="toggleTheme()" aria-label="Mode sombre" title="Mode sombre">☾</button><button type="button" id="langBtn" onclick="toggleLanguage()" aria-label="English" title="English">EN</button></nav><header class="brand">
 <img class="brand-logo" src="/img/logo.webp" alt="Logo passerelle Modbus"><div class="brand-version">Version )HTML";
     s += String(version_.c_str());
