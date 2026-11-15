@@ -1,6 +1,6 @@
 # Modbus RTU/IP Gateway — TCP and UDP development branch
 
-This branch extends the existing ESPHome/Arduino ESP32-S3 gateway with Modbus-over-UDP transport. The production TCP firmware remains on `main`.
+Version **1.2.1** on **`main`** includes TCP and UDP Client/Server transport modes. The earlier TCP-only v1.1.15 is part of the repository history; this document originated on the feature branch and now describes the merged implementation.
 
 ## Configuration
 
