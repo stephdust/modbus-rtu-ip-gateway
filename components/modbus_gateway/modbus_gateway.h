@@ -1929,6 +1929,12 @@ main>.bottom-actions .action-display button,main>.bottom-actions>button{height:4
 main>.bottom-actions .action-display button{width:48px;min-width:48px;padding:0}
 main>.bottom-actions .bottom-save{margin-left:auto}
 @media(max-width:650px){main>.bottom-actions{flex-wrap:wrap;justify-content:center}main>.bottom-actions .action-display{flex:0 0 auto;justify-content:center;margin:0}main>.bottom-actions>button{flex:1 1 135px;min-width:0}main>.bottom-actions .bottom-save{margin-left:0}}
+
+/* Exact vertical alignment: all toolbar controls share the same centerline. */
+main>.bottom-actions{align-items:center!important}
+main>.bottom-actions .action-display{align-self:center!important;align-items:center!important}
+main>.bottom-actions .action-display button,
+main>.bottom-actions>button{height:44px!important;min-height:44px!important;max-height:44px!important;margin-top:0!important;margin-bottom:0!important;align-self:center!important;position:static!important;transform:none!important;vertical-align:middle!important}
 </style></head><body><main><header class="brand">
 <img class="brand-logo" src="/img/logo.webp" alt="Logo passerelle Modbus"><div class="brand-version">Version )HTML";
     s += String(version_.c_str());
