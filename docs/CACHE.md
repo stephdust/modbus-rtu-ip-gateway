@@ -11,19 +11,9 @@ The Web UI exposes two independent settings in **1. Modbus IP**. To keep the pag
 
 Both settings are independent and disabled by default. Changing the selected TCP mode updates the visible switch immediately without reloading the page. Saving in one mode updates only that mode’s cache setting; the hidden mode’s setting is preserved in NVS and appears again when that mode is selected.
 
-## Web UI examples
+## Web UI behavior (v1.2.1)
 
-Only the cache option for the current mode is displayed. Switching the mode selector changes the visible cache control immediately; it does not clear the hidden mode's setting.
-
-### TCP Client mode
-
-![TCP Client mode shows the Client cache control](assets/cache-mode-client.png)
-
-### TCP Server mode
-
-![TCP Server mode shows the Server cache control](assets/cache-mode-server.png)
-
-These are documentation UI previews. Example addresses and values are illustrative.
+The outdated cache screenshots from v1.1.13 have been removed. In **TCP Client** or **UDP Client**, only the **Client cache** switch is shown; in **TCP Server** or **UDP Server**, only the **Server cache** switch is shown. The inactive direction's saved setting is preserved. The **cache TTL** input is visible only while the selected direction's cache is checked, and hidden otherwise. New screenshots must be taken from the running v1.2.1 interface.
 
 ## Time-to-live and capacity
 
