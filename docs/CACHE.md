@@ -4,10 +4,10 @@ The gateway includes an optional response cache for each operating mode. The cac
 
 ## Independent mode switches
 
-The Web UI exposes two independent settings in **1. Modbus TCP**. To keep the page unambiguous, it displays only the setting that belongs to the currently selected TCP mode:
+The Web UI exposes two independent settings in **1. Modbus IP**. To keep the page unambiguous, it displays only the setting that belongs to the currently selected Client/Server mode:
 
-- **TCP Client selected:** the UI shows **Enable cache in TCP Client mode (RTU → TCP)**, which reuses a previously received Modbus TCP read response for a matching RTU request.
-- **TCP Server selected:** the UI shows **Enable cache in TCP Server mode (TCP → RTU)**, which reuses a previously received RTU read response for a matching TCP request.
+- **IP Client selected:** the UI shows **Enable cache in TCP Client mode (RTU → TCP)**, which reuses a previously received Modbus TCP read response for a matching RTU request.
+- **IP Server selected:** the UI shows **Enable cache in TCP Server mode (TCP → RTU)**, which reuses a previously received RTU read response for a matching TCP request.
 
 Both settings are independent and disabled by default. Changing the selected TCP mode updates the visible switch immediately without reloading the page. Saving in one mode updates only that mode’s cache setting; the hidden mode’s setting is preserved in NVS and appears again when that mode is selected.
 
@@ -79,3 +79,9 @@ A cache hit intentionally returns a previous valid device response. The data can
 ## Interaction with asynchronous Client TCP processing
 
 From component release 1.1.9, normal RTU-originated Client TCP transactions receive the remote TCP response cooperatively through the ESPHome loop. Cache hits remain immediate and do not open or use the TCP socket. A manual transaction initiated from the Web UI still uses the synchronous diagnostic helper; it is refused with HTTP 409 while a normal Client TCP transaction is already in progress so that both operations cannot read from the same TCP stream concurrently.
+
+## TCP and UDP (v1.2.1)
+
+Both cache switches are **direction-specific**, not transport-specific: **Client** applies to TCP Client and UDP Client, and **Server** applies to TCP Server and UDP Server. The currently selected direction determines which checkbox appears. The inactive direction's saved setting is retained.
+
+The shared **cache TTL (ms)** input is shown only when the currently selected direction's **Enable cache** checkbox is checked. It hides immediately when unchecked, or when switching to a direction with cache disabled. Hiding the field does not erase the configured TTL. Only valid read functions 01–04 are cached; writes are not cached and trigger the documented invalidation rules.
