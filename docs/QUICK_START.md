@@ -7,7 +7,7 @@
 
 - ESPHome with ESP32 support installed on a computer, or ESPHome Dashboard.
 - An ESP32-S3 board with an RS-485 transceiver. The tested reference board for this project is Waveshare ESP32-S3-RS485-CAN.
-- A 2.4 GHz Wi-Fi network reachable by the ESP32 and the Modbus TCP endpoint.
+- A 2.4 GHz Wi-Fi network reachable by the ESP32 and the selected Modbus IP (TCP or UDP) endpoint.
 - A Modbus RTU device and a correctly wired RS-485 bus for end-to-end testing.
 
 ## 2. Prepare the ESPHome configuration
@@ -163,3 +163,20 @@ Frame timestamps are milliseconds since ESP32 boot; they are not wall-clock time
 Invalid RTU CRC frames are discarded before forwarding or cache storage. The Web trace reports `CRC ERROR` with the received and calculated CRC. In TCP Server mode, an invalid RTU response is not forwarded as data; the TCP requester receives gateway exception `0x0B`. Incomplete RTU responses and timeouts are logged as `RTU ERROR`. If Silent timeout behavior is selected, the log also records `TIMEOUT SILENT` and no upstream response is sent.
 
 The diagnostics also report per-stage timing and receive-byte observations. These are software timestamps from the ESP32, not oscilloscope measurements. See [Latency diagnostics](LATENCY_DIAGNOSTICS.md).
+
+## TCP / UDP configuration (v1.2.1)
+
+In Section **1. Modbus IP**, choose **Transport = TCP** or **UDP** and **Mode = Client** or **Server**. All four combinations are supported:
+
+| Selection | Gateway behavior |
+|---|---|
+| TCP Client | Receives RTU requests and forwards them to a remote Modbus TCP server |
+| TCP Server | Receives Modbus TCP requests and forwards them to downstream RS-485 slaves |
+| UDP Client | Receives RTU requests and forwards them as MBAP datagrams to a configured IPv4 UDP endpoint |
+| UDP Server | Receives Modbus MBAP datagrams and forwards requests to downstream RS-485 slaves |
+
+The network host, port and timeout settings apply to the selected transport. UDP Client requires a numeric IPv4 destination. UDP does not establish or maintain a connection and does not guarantee delivery. **Persistent TCP connection** appears only in **TCP Client**; it is hidden in TCP Server and both UDP modes. Its saved value is retained when switching away from TCP.
+
+The **Client** and **Server** cache checkboxes follow the selected mode, regardless of transport. The **cache TTL (ms)** field appears only if the selected mode's cache is enabled; disabling the cache hides the TTL without deleting the saved value. See [Cache behavior](CACHE.md) and [UDP development details](TCP_UDP_DEVELOPMENT.md).
+
+The earlier TCP-specific examples and screenshots in this guide remain valid for TCP, but should not be interpreted as excluding UDP.
