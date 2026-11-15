@@ -1693,9 +1693,8 @@ html[data-theme="dark"] label{color:#cbd5e1}
 html[data-theme="dark"] .muted,html[data-theme="dark"] .brand-sub,html[data-theme="dark"] .brand-version{color:#94a3b8}
 html[data-theme="dark"] input,html[data-theme="dark"] select,html[data-theme="dark"] textarea{background:#0f172a;color:#f1f5f9;border-color:#475569}
 html[data-theme="dark"] pre{background:#080e1b;color:#dbeafe;border:1px solid #334155}
-#themeBtn{float:right;margin:0 0 10px 10px;background:#334155;color:#fff}
-#themeBtn:hover{background:#475569}
-</style></head><body><main><button type="button" id="langBtn" onclick="toggleLanguage()" style="float:right">English</button><button type="button" id="themeBtn" onclick="toggleTheme()" aria-label="Changer le thème">Mode sombre</button><header class="brand">
+.ui-toolbar{display:flex;justify-content:flex-end;align-items:center;gap:6px;margin:0 0 6px}.ui-toolbar button{float:none!important;margin:0!important;padding:5px 9px;min-height:29px;min-width:37px;font-size:12px;line-height:1.1;border-radius:7px;box-shadow:none}.ui-toolbar #themeBtn{background:#334155;color:#fff}.ui-toolbar #themeBtn:hover{background:#475569}.ui-toolbar #langBtn{background:#1769aa;color:#fff}.ui-toolbar #langBtn:hover{background:#125487}
+</style></head><body><main><nav class="ui-toolbar" aria-label="Affichage et langue"><button type="button" id="themeBtn" onclick="toggleTheme()" aria-label="Mode sombre" title="Mode sombre">☾</button><button type="button" id="langBtn" onclick="toggleLanguage()" aria-label="English" title="English">EN</button></nav><header class="brand">
 <img class="brand-logo" src="/img/logo.webp" alt="Logo passerelle Modbus"><div class="brand-version">Version )HTML";
     s += String(version_.c_str());
     s += R"HTML(</div><div><div class="brand-title">Passerelle Modbus RTU ↔ IP</div><div class="brand-sub" data-fr="Passerelle série ↔ réseau" data-en="Serial ↔ network gateway">Passerelle série ↔ réseau</div></div></header>
@@ -1838,7 +1837,9 @@ function applyLanguage(){
   const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
   let node;while((node=walker.nextNode())){const parent=node.parentElement;if(!parent||['SCRIPT','STYLE'].includes(parent.tagName))continue;const raw=node.nodeValue;const trimmed=raw.trim();if(!trimmed)continue;const translated=translateValue(trimmed);if(translated!==trimmed)node.nodeValue=raw.replace(trimmed,translated);}
   document.querySelectorAll('[placeholder]').forEach(el=>{el.placeholder=translateValue(el.placeholder);});
-  document.getElementById('langBtn').textContent=currentLanguage==='fr'?'English':'Français';
+  document.getElementById('langBtn').textContent=currentLanguage==='fr'?'EN':'FR';
+  document.getElementById('langBtn').title=currentLanguage==='fr'?'English':'Français';
+  document.getElementById('langBtn').setAttribute('aria-label',document.getElementById('langBtn').title);
   updateListenState();
 }
 
@@ -1846,7 +1847,9 @@ function setTheme(theme){
   const dark=theme==='dark';
   document.documentElement.setAttribute('data-theme',dark?'dark':'light');
   const btn=document.getElementById('themeBtn');
-  if(btn)btn.textContent=currentLanguage==='en'?(dark?'Light mode':'Dark mode'):(dark?'Mode clair':'Mode sombre');
+  if(btn)btn.textContent=dark?'☀':'☾';
+  const themeLabel=currentLanguage==='en'?(dark?'Light mode':'Dark mode'):(dark?'Mode clair':'Mode sombre');
+  if(btn){btn.title=themeLabel;btn.setAttribute('aria-label',themeLabel);}
   try{localStorage.setItem('modbus_theme',dark?'dark':'light');}catch(e){}
 }
 function toggleTheme(){setTheme(document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark');}
