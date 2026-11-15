@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/modbus-rtu-ip-gateway.svg" alt="Modbus RTU to IP TCP/UDP Gateway with RTU and IP caches" width="900" style="max-width: 100%; height: auto;" />
+  <img src="docs/assets/modbus-rtu-ip-gateway.webp" alt="Modbus RTU to IP TCP/UDP Gateway with RTU and IP caches" width="900" style="max-width: 100%; height: auto;" />
 </p>
 
 # Modbus RTU ↔ IP (TCP/UDP) Gateway for ESPHome
