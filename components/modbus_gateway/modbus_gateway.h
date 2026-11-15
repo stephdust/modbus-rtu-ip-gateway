@@ -215,6 +215,7 @@ class ModbusGateway : public Component {
     size_t pdu_pos{0};
     uint16_t expected_pdu{0};
     uint32_t last_activity{0};
+    uint32_t connected_since_ms{0};
     uint32_t request_ready_us{0};
     uint32_t request_first_byte_us{0};
     uint32_t request_last_byte_us{0};
@@ -1384,6 +1385,7 @@ class ModbusGateway : public Component {
       TcpClientSlot &slot = tcp_clients_[free_slot];
       clear_tcp_request_(slot);
       slot.client = incoming;
+      slot.connected_since_ms = millis();
       ESP_LOGI("modbus_gateway", "Modbus TCP client %u connected", unsigned(free_slot + 1));
     }
   }
@@ -1880,6 +1882,30 @@ main>.bottom-actions .bottom-refresh{background:linear-gradient(#1688d0,#07578d)
 html[data-theme="light"] main>.bottom-actions{background:#fff;border-color:#c7dbe9}
 @media(max-width:900px){main>.bottom-actions{grid-column:1;grid-row:auto}}
 @media(max-width:560px){main>.bottom-actions{justify-content:stretch}main>.bottom-actions button{flex:1 1 100%}}
+
+/* Status panel closely matching the reference mock-up */
+main>form#cfg,main>form#rebootForm{display:none}
+main>section.dashboard-counters{grid-row:5}
+main>section:nth-of-type(6){grid-row:6}
+main>.bottom-actions{grid-row:7}
+main>section.dashboard-status{border-color:#45c8ed;background:linear-gradient(155deg,#162e49,#0b1b2c)}
+main>section.dashboard-status>h2{background:linear-gradient(90deg,#1c466b,#142d48);font-size:20px;color:#f4faff}
+main>section.dashboard-status .status-content{gap:0}
+main>section.dashboard-status .status-content>div{border-bottom:0;display:grid;grid-template-columns:minmax(130px,1fr) minmax(0,1.3fr);padding:7px 0;font-size:15px}
+main>section.dashboard-status .status-content strong{color:#64ed88;text-align:left;font-size:15px;overflow-wrap:anywhere}
+main>section.dashboard-status .connection-list{margin:12px 14px 0;padding:0;border:1px solid #62849c;background:#10243a;overflow:hidden}
+main>section.dashboard-status .client-table{width:100%;border-collapse:collapse;font-size:14px;color:#edf7ff}
+main>section.dashboard-status .client-table th{background:#213b55;color:#edf7ff;font-weight:700;text-align:center;padding:8px 5px;border:1px solid #385670}
+main>section.dashboard-status .client-table td{padding:7px 8px;border:1px solid #385670;text-align:center}
+main>section.dashboard-status .client-table td:first-child{font-weight:700}
+main>section.dashboard-status .client-dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#8495a7;margin-right:7px}
+main>section.dashboard-status .client-dot.active{background:#3cf26a;box-shadow:0 0 6px #3cf26a55}
+main>section.dashboard-status .client-dot.idle{background:#9baaba}
+html[data-theme="light"] main>section.dashboard-status{background:#fff}
+html[data-theme="light"] main>section.dashboard-status .connection-list{background:#f1f7fb}
+html[data-theme="light"] main>section.dashboard-status .client-table{color:#18374f}
+html[data-theme="light"] main>section.dashboard-status .client-table th{background:#e0eff9;color:#18374f}
+@media(max-width:900px){main>section.dashboard-counters,main>section:nth-of-type(6),main>.bottom-actions{grid-row:auto}}
 </style></head><body><main><nav class="ui-toolbar" aria-label="Affichage et langue"><button type="button" id="themeBtn" onclick="toggleTheme()" aria-label="Mode sombre" title="Mode sombre">☾</button><button type="button" id="langBtn" onclick="toggleLanguage()" aria-label="English" title="English">EN</button></nav><header class="brand">
 <img class="brand-logo" src="/img/logo.webp" alt="Logo passerelle Modbus"><div class="brand-version">Version )HTML";
     s += String(version_.c_str());
@@ -1939,10 +1965,20 @@ html[data-theme="light"] main>.bottom-actions{background:#fff;border-color:#c7db
 </div>
 <p class="muted">-1 = sélection automatique de la broche. Les paramètres sont enregistrés en mémoire. Toute modification des GPIO redémarre l’ESP32.</p>
 </section>
-<section class="dashboard-status" aria-label="État de la passerelle"><h2>◉ <span data-fr="État de la passerelle" data-en="Gateway status">État de la passerelle</span></h2><div class="status-content"><div><span data-fr="Interface Web" data-en="Web interface">Interface Web</span><strong id="dashWebStatus">—</strong></div><div><span data-fr="Transport IP sélectionné" data-en="Selected IP transport">Transport IP sélectionné</span><strong id="dashTransport">—</strong></div><div><span data-fr="Mode de fonctionnement" data-en="Operating mode">Mode de fonctionnement</span><strong id="dashMode">—</strong></div><div><span data-fr="Écoute RTU" data-en="RTU listening">Écoute RTU</span><strong id="dashListen">—</strong></div></div><div class="connection-list"><strong data-fr="Clients / connexions IP" data-en="IP clients / connections">Clients / connexions IP</strong><div id="dashConnections" aria-live="polite">—</div></div><p class="muted" data-fr="État issu de la configuration et de l’API locale, pas un test de connexion au serveur distant." data-en="Status from configuration and local API, not a remote server connectivity test.">État issu de la configuration et de l’API locale, pas un test de connexion au serveur distant.</p></section>
+<section class="dashboard-status" aria-label="État et connexions"><h2>♧ <span data-fr="État et connexions" data-en="Status and connections">État et connexions</span></h2>
+<div class="status-content">
+<div><span>🟢 <b data-fr="Passerelle :" data-en="Gateway:">Passerelle :</b></span><strong id="dashWebStatus">—</strong></div>
+<div><span>🟢 <b>Wi-Fi :</b></span><strong id="dashWifi">—</strong></div>
+<div><span>🟢 <b id="dashServerLabel" data-fr="Serveur IP :" data-en="IP server:">Serveur IP :</b></span><strong id="dashServer">—</strong></div>
+<div><span>♟ <b id="dashClientLabel" data-fr="Clients IP :" data-en="IP clients:">Clients IP :</b></span><strong id="dashClientCount">—</strong></div>
+</div>
+<div class="connection-list"><table class="client-table"><thead><tr><th data-fr="Client" data-en="Client">Client</th><th data-fr="Adresse IP" data-en="IP address">Adresse IP</th><th data-fr="Connecté depuis" data-en="Connected for">Connecté depuis</th></tr></thead><tbody id="dashConnections"></tbody></table></div>
+<p class="muted" data-fr="Durée de connexion en temps écoulé. Les connexions UDP ne sont pas persistantes." data-en="Connection duration is elapsed time. UDP has no persistent connections.">Durée de connexion en temps écoulé. Les connexions UDP ne sont pas persistantes.</p>
+<span id="dashTransport" hidden></span><span id="dashMode" hidden></span><span id="dashListen" hidden></span>
+</section>
 <section class="dashboard-counters" aria-label="Diagnostics des trames"><h2>▥ <span data-fr="Compteurs / Diagnostics" data-en="Counters / diagnostics">Compteurs / Diagnostics</span></h2><div class="counter-grid"><div><strong>RTU RX</strong><output id="dashRtuRx">0</output></div><div><strong>RTU TX</strong><output id="dashRtuTx">0</output></div><div><strong>IP RX</strong><output id="dashIpRx">0</output></div><div><strong>IP TX</strong><output id="dashIpTx">0</output></div></div><p class="muted" data-fr="Nombre d’entrées correspondantes parmi les 64 dernières lignes du journal ; ce ne sont pas des compteurs cumulés." data-en="Matching entries in the most recent 64 log lines; these are not lifetime counters.">Nombre d’entrées correspondantes parmi les 64 dernières lignes du journal ; ce ne sont pas des compteurs cumulés.</p></section>
-<form id="cfg" method="POST" action="/save"><input type="hidden" id="form_lang" name="lang" value="fr"><div class="apply-panel"><div><strong>Enregistrement global</strong><div class="muted">Les paramètres des sections 1, 2 et 3 seront enregistrés ensemble.</div></div><button type="submit">Enregistrer / appliquer</button></div></form>
-<form id="rebootForm" method="POST" action="/reboot"><input type="hidden" id="reboot_lang" name="lang" value="fr"><div class="reboot-panel"><div><strong>Redémarrer la passerelle</strong><div class="muted">Redémarre l’ESP32 sans modifier les paramètres enregistrés.</div></div><button type="submit">Redémarrer</button></div></form>
+<form id="cfg" method="POST" action="/save"><input type="hidden" id="form_lang" name="lang" value="fr"></form>
+<form id="rebootForm" method="POST" action="/reboot"><input type="hidden" id="reboot_lang" name="lang" value="fr"></form>
 <section><h2><span class="section-badge section-badge-log" aria-hidden="true"><img src="/img/frame-diagnostics.jpg" alt=""><small>LOG</small></span>4. Debug des trames</h2>
 <p class="muted">RTU RX/TX et IP TCP/UDP TX/RX · rafraîchissement automatique toutes les 1,5 s</p>
 <p class="muted">Les tentatives de connexion TCP et les erreurs réseau sont également affichées dans cette fenêtre.</p>
@@ -2072,17 +2108,29 @@ function updateDashboard(frames){
  document.getElementById('dashIpRx').textContent=counts.ipRx;
  document.getElementById('dashIpTx').textContent=counts.ipTx;
 }
+function formatElapsed(sec){sec=Math.max(0,Number(sec)||0);const h=Math.floor(sec/3600),m=Math.floor(sec%3600/60),ss=Math.floor(sec%60);return [h,m,ss].map(v=>String(v).padStart(2,'0')).join(':');}
 async function refreshConnections(){
  try{
   const r=await fetch('/connections',{cache:'no-store'});if(!r.ok)throw Error('connections');
-  const j=await r.json(),el=document.getElementById('dashConnections');
-  if(j.mode==='SERVER'&&j.transport==='TCP'){
-   el.textContent=j.clients.length?'':tr('Aucun client TCP connecté','No TCP clients connected');
-   for(const c of j.clients){const line=document.createElement('div');line.className='connection-entry';line.textContent='#'+c.slot+'  '+c.ip+':'+c.port;el.appendChild(line);}
-  }else if(j.mode==='SERVER'){el.textContent=tr('Serveur UDP : sans connexion persistante (clients non suivis)','UDP server: connectionless (clients not tracked)');}
-  else if(j.transport==='TCP'){el.textContent=tr('Serveur distant : ','Remote server: ')+j.remote+' — '+(j.connected?tr('connecté','connected'):tr('déconnecté','disconnected'));}
-  else{el.textContent=tr('Destination UDP : ','UDP destination: ')+j.remote+tr(' (sans connexion persistante)',' (connectionless)');}
- }catch(e){document.getElementById('dashConnections').textContent=tr('État indisponible','Status unavailable');}
+  const j=await r.json(),tbody=document.getElementById('dashConnections');
+  const server=j.mode==='SERVER',tcp=j.transport==='TCP',clients=Array.isArray(j.clients)?j.clients:[];
+  const ip=j.wifi_ip||'';
+  document.getElementById('dashWifi').textContent=ip&&ip!=='unavailable'?tr('Connecté','Connected')+' ('+ip+')':tr('Indisponible','Unavailable');
+  document.getElementById('dashServerLabel').textContent=server?tr('Serveur '+j.transport+' :',''+j.transport+' server:'):tr('Destination '+j.transport+' :',j.transport+' destination:');
+  document.getElementById('dashServer').textContent=server?(tcp?tr('En écoute sur le port ','Listening on port ')+j.port:tr('UDP sur le port ','UDP port ')+j.port):j.remote+(tcp?' — '+(j.connected?tr('connecté','connected'):tr('déconnecté','disconnected')):'');
+  document.getElementById('dashClientLabel').textContent=server&&tcp?tr('Clients TCP :','TCP clients:'):tr('Connexions IP :','IP connections:');
+  document.getElementById('dashClientCount').textContent=server&&tcp?clients.length+' / 4 '+tr('connectés','connected'):(server?tr('UDP sans session','UDP connectionless'):(tcp?(j.connected?'1 / 1':'0 / 1'):tr('UDP sans session','UDP connectionless')));
+  tbody.replaceChildren();
+  function addRow(slot,ipAddr,duration,active){
+    const row=document.createElement('tr');
+    const a=document.createElement('td'),b=document.createElement('td'),c=document.createElement('td');
+    const dot=document.createElement('span');dot.className='client-dot '+(active?'active':'idle');a.appendChild(dot);a.appendChild(document.createTextNode(' #'+slot));
+    b.textContent=ipAddr;c.textContent=duration;row.append(a,b,c);tbody.appendChild(row);
+  }
+  if(server&&tcp){for(let i=1;i<=4;i++){const c=clients.find(x=>x.slot===i);addRow(i,c?c.ip+':'+c.port:'—',c?formatElapsed(c.duration_s):'—',!!c);}}
+  else if(!server&&tcp){addRow(1,j.remote||'—',j.connected?tr('Connecté','Connected'):'—',!!j.connected);}
+  else{const row=document.createElement('tr');const cell=document.createElement('td');cell.colSpan=3;cell.textContent=tr('UDP : aucune session client persistante','UDP: no persistent client sessions');row.appendChild(cell);tbody.appendChild(row);}
+ }catch(e){document.getElementById('dashWifi').textContent=tr('Indisponible','Unavailable');document.getElementById('dashClientCount').textContent='—';}
 }
 async function refresh(){try{let r=await fetch('/frames');if(!r.ok)throw Error('frames unavailable');let j=await r.json();const frames=Array.isArray(j.frames)?j.frames:[];document.getElementById('frames').innerHTML=frames.map(formatFrame).join('\n')||tr('Aucune trame','No frames');updateDashboard(frames);}catch(e){document.getElementById('dashWebStatus').textContent=tr('Indisponible','Unavailable');}}
 async function clearFrames(){try{await fetch('/clear',{method:'POST'});document.getElementById('frames').textContent=tr('Aucune trame','No frames');}catch(e){}}
@@ -2099,7 +2147,11 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
     out += tcp_mode_.c_str();
     out += "\",\"transport\":\"";
     out += transport_.c_str();
-    out += "\",\"clients\":[";
+    out += "\",\"wifi_ip\":\"";
+    out += local_wifi_ip_();
+    out += "\",\"port\":";
+    out += String(cfg_port_);
+    out += ",\"clients\":[";
     if (tcp_mode_ == "SERVER" && transport_ == "TCP") {
       bool first = true;
       for (size_t i = 0; i < MAX_TCP_CLIENTS; ++i) {
@@ -2113,6 +2165,8 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
         out += slot.client.remoteIP().toString();
         out += "\",\"port\":";
         out += String(slot.client.remotePort());
+        out += ",\"duration_s\":";
+        out += String((millis() - slot.connected_since_ms) / 1000UL);
         out += "}";
       }
     }
