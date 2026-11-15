@@ -2096,15 +2096,15 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
 
   String connections_json_() {
     String out = "{\"mode\":\"";
-    out += tcp_mode_;
+    out += tcp_mode_.c_str();
     out += "\",\"transport\":\"";
-    out += transport_;
+    out += transport_.c_str();
     out += "\",\"clients\":[";
     if (tcp_mode_ == "SERVER" && transport_ == "TCP") {
       bool first = true;
       for (size_t i = 0; i < MAX_TCP_CLIENTS; ++i) {
-        const auto &slot = tcp_clients_[i];
-        if (!slot.client || (!slot.client.connected() && !slot.client.available())) continue;
+        auto &slot = tcp_clients_[i];
+        if (!slot.client.connected() && !slot.client.available()) continue;
         if (!first) out += ",";
         first = false;
         out += "{\"slot\":";
