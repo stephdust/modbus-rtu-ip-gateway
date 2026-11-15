@@ -1920,6 +1920,15 @@ main>section.dashboard-counters{grid-row:5}
 main>section:nth-of-type(6){grid-row:6}
 @media(max-width:900px){main>.brand,main>.bottom-actions,main>section:nth-of-type(1),main>section:nth-of-type(2),main>section:nth-of-type(3),main>section.dashboard-status,main>section.dashboard-counters,main>section:nth-of-type(6){grid-column:1;grid-row:auto}}
 @media(max-width:650px){main>.bottom-actions{justify-content:center}main>.bottom-actions .action-display{flex:1 1 100%;justify-content:center;margin-right:0}main>.bottom-actions button{flex:1 1 130px;min-width:0}main>.bottom-actions .action-display button{flex:0 0 auto}}
+
+/* Align all five toolbar controls on the same horizontal baseline. */
+main>.bottom-actions{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:12px;flex-wrap:nowrap}
+main>.bottom-actions .action-display{display:flex;align-items:center;gap:10px;flex:0 0 auto;margin:0}
+main>.bottom-actions>button{flex:0 0 auto}
+main>.bottom-actions .action-display button,main>.bottom-actions>button{height:44px;min-height:44px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;margin:0;vertical-align:middle;line-height:1.2}
+main>.bottom-actions .action-display button{width:48px;min-width:48px;padding:0}
+main>.bottom-actions .bottom-save{margin-left:auto}
+@media(max-width:650px){main>.bottom-actions{flex-wrap:wrap;justify-content:center}main>.bottom-actions .action-display{flex:0 0 auto;justify-content:center;margin:0}main>.bottom-actions>button{flex:1 1 135px;min-width:0}main>.bottom-actions .bottom-save{margin-left:0}}
 </style></head><body><main><header class="brand">
 <img class="brand-logo" src="/img/logo.webp" alt="Logo passerelle Modbus"><div class="brand-version">Version )HTML";
     s += String(version_.c_str());
