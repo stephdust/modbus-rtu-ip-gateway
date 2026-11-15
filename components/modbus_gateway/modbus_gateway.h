@@ -1798,6 +1798,37 @@ main>.brand .brand-logo{width:100%;max-width:1200px}
  main>.apply-panel,main>.reboot-panel{flex-wrap:wrap}
  main>section #frames{min-height:220px}
 }
+
+/* Structural dashboard: real status data, log-window counters and balanced form actions */
+main{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;max-width:1320px}
+main>section:nth-of-type(1){grid-column:1;grid-row:3}
+main>section:nth-of-type(2){grid-column:2;grid-row:3}
+main>section:nth-of-type(3){grid-column:1;grid-row:4}
+main>section.dashboard-status{grid-column:2;grid-row:4}
+main>section.dashboard-counters{grid-column:1/-1;grid-row:6}
+main>form#cfg,main>form#rebootForm{display:block;min-width:0;margin:0}
+main>form#cfg{grid-column:1;grid-row:5}
+main>form#rebootForm{grid-column:2;grid-row:5}
+main>form#cfg>.apply-panel,main>form#rebootForm>.reboot-panel{margin:0;min-height:105px;display:flex;align-items:center;justify-content:space-between;gap:14px;background:linear-gradient(125deg,#173555,#10233b);border:1px solid #32769c;border-radius:12px;padding:16px;color:#e8f5ff}
+main>form#cfg>.apply-panel strong,main>form#rebootForm>.reboot-panel strong{color:#e8f5ff}
+main>form#cfg button{background:linear-gradient(#20ad63,#0d733d);border-color:#56d28e}
+main>section:nth-of-type(6){grid-column:1/-1;grid-row:7}
+main>section.dashboard-status .status-content{padding:0 18px;display:grid;gap:10px}
+main>section.dashboard-status .status-content>div{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid #31506c}
+main>section.dashboard-status .status-content strong{color:#6fe7b1;text-align:right}
+main>section.dashboard-counters .counter-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;padding:0 18px}
+main>section.dashboard-counters .counter-grid>div{padding:14px;background:#0b2038;border:1px solid #32638a;border-radius:9px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+main>section.dashboard-counters output{font-size:22px;color:#68dfff;font-weight:700;font-variant-numeric:tabular-nums}
+main>section.dashboard-status p,main>section.dashboard-counters p{margin:14px 18px 0}
+main>section:nth-of-type(6) #frames{min-height:300px}
+@media(max-width:900px){
+main{grid-template-columns:1fr}
+main>section:nth-of-type(1),main>section:nth-of-type(2),main>section:nth-of-type(3),main>section.dashboard-status,main>section.dashboard-counters,main>section:nth-of-type(6),main>form#cfg,main>form#rebootForm{grid-column:1;grid-row:auto}
+}
+@media(max-width:560px){main>section.dashboard-counters .counter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}main>form#cfg>.apply-panel,main>form#rebootForm>.reboot-panel{flex-wrap:wrap}}
+html[data-theme="light"] main>form#cfg>.apply-panel,html[data-theme="light"] main>form#rebootForm>.reboot-panel{background:#fff;color:#17202a;border-color:#c7dbe9}
+html[data-theme="light"] main>form#cfg>.apply-panel strong,html[data-theme="light"] main>form#rebootForm>.reboot-panel strong{color:#12345a}
+html[data-theme="light"] main>section.dashboard-counters .counter-grid>div{background:#e7f3ff;color:#12345a}
 </style></head><body><main><nav class="ui-toolbar" aria-label="Affichage et langue"><button type="button" id="themeBtn" onclick="toggleTheme()" aria-label="Mode sombre" title="Mode sombre">☾</button><button type="button" id="langBtn" onclick="toggleLanguage()" aria-label="English" title="English">EN</button></nav><header class="brand">
 <img class="brand-logo" src="/img/logo.webp" alt="Logo passerelle Modbus"><div class="brand-version">Version )HTML";
     s += String(version_.c_str());
@@ -1857,6 +1888,8 @@ main>.brand .brand-logo{width:100%;max-width:1200px}
 </div>
 <p class="muted">-1 = sélection automatique de la broche. Les paramètres sont enregistrés en mémoire. Toute modification des GPIO redémarre l’ESP32.</p>
 </section>
+<section class="dashboard-status" aria-label="État de la passerelle"><h2>◉ <span data-fr="État de la passerelle" data-en="Gateway status">État de la passerelle</span></h2><div class="status-content"><div><span data-fr="Interface Web" data-en="Web interface">Interface Web</span><strong id="dashWebStatus">—</strong></div><div><span data-fr="Transport IP sélectionné" data-en="Selected IP transport">Transport IP sélectionné</span><strong id="dashTransport">—</strong></div><div><span data-fr="Mode de fonctionnement" data-en="Operating mode">Mode de fonctionnement</span><strong id="dashMode">—</strong></div><div><span data-fr="Écoute RTU" data-en="RTU listening">Écoute RTU</span><strong id="dashListen">—</strong></div></div><p class="muted" data-fr="État issu de la configuration et de l’API locale, pas un test de connexion au serveur distant." data-en="Status from configuration and local API, not a remote server connectivity test.">État issu de la configuration et de l’API locale, pas un test de connexion au serveur distant.</p></section>
+<section class="dashboard-counters" aria-label="Diagnostics des trames"><h2>▥ <span data-fr="Compteurs / Diagnostics" data-en="Counters / diagnostics">Compteurs / Diagnostics</span></h2><div class="counter-grid"><div><strong>RTU RX</strong><output id="dashRtuRx">0</output></div><div><strong>RTU TX</strong><output id="dashRtuTx">0</output></div><div><strong>IP RX</strong><output id="dashIpRx">0</output></div><div><strong>IP TX</strong><output id="dashIpTx">0</output></div></div><p class="muted" data-fr="Nombre d’entrées correspondantes parmi les 64 dernières lignes du journal ; ce ne sont pas des compteurs cumulés." data-en="Matching entries in the most recent 64 log lines; these are not lifetime counters.">Nombre d’entrées correspondantes parmi les 64 dernières lignes du journal ; ce ne sont pas des compteurs cumulés.</p></section>
 <form id="cfg" method="POST" action="/save"><input type="hidden" id="form_lang" name="lang" value="fr"><div class="apply-panel"><div><strong>Enregistrement global</strong><div class="muted">Les paramètres des sections 1, 2 et 3 seront enregistrés ensemble.</div></div><button type="submit">Enregistrer / appliquer</button></div></form>
 <form id="rebootForm" method="POST" action="/reboot"><input type="hidden" id="reboot_lang" name="lang" value="fr"><div class="reboot-panel"><div><strong>Redémarrer la passerelle</strong><div class="muted">Redémarre l’ESP32 sans modifier les paramètres enregistrés.</div></div><button type="submit">Redémarrer</button></div></form>
 <section><h2><span class="section-badge section-badge-log" aria-hidden="true"><img src="/img/frame-diagnostics.jpg" alt=""><small>LOG</small></span>4. Debug des trames</h2>
@@ -1970,9 +2003,27 @@ document.querySelector('input[name="cache_client"]').addEventListener('change',t
 document.querySelector('input[name="cache_server"]').addEventListener('change',toggleCacheFields);toggleCacheFields();
 function escapeHtml(value){return String(value).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
 function formatFrame(x){const prefix=x.time+' | '+translateValue(x.dir)+' | ';const isRtu=x.dir.startsWith('RTU')||x.dir==='MANUAL RTU';const bytes=x.hex.trim().split(/\s+/).filter(Boolean);if(!isRtu||bytes.length<3)return prefix+escapeHtml(translateValue(x.hex));const vals=bytes.map(b=>parseInt(b,16));if(vals.some(v=>!Number.isFinite(v)))return prefix+x.hex;const calculated=crc16Modbus(vals.slice(0,-2));const crcOk=vals[vals.length-2]===(calculated&255)&&vals[vals.length-1]===((calculated>>8)&255);const payload=bytes.slice(0,-2).join(' ');const crc='<span class=\"crc-byte\">'+bytes[bytes.length-2]+'</span> <span class=\"crc-byte\">'+bytes[bytes.length-1]+'</span>';return prefix+payload+' '+crc+'  <span class=\"'+(crcOk?'crc-ok':'crc-bad')+'\">CRC '+(crcOk?'OK':tr('Erreur','Error'))+'</span>';}
-async function refresh(){try{let r=await fetch('/frames');let j=await r.json();document.getElementById('frames').innerHTML=j.frames.map(formatFrame).join('\n')||tr('Aucune trame','No frames');}catch(e){}}
+function updateDashboard(frames){
+ const mode=document.querySelector('select[name="mode"]').value;
+ const transport=document.querySelector('select[name="transport"]').value;
+ document.getElementById('dashTransport').textContent=transport;
+ document.getElementById('dashMode').textContent=mode==='CLIENT'?'Client (RTU → IP)':'Serveur (IP → RTU)';
+ document.getElementById('dashWebStatus').textContent=tr('Accessible','Reachable');
+ const counts={rtuRx:0,rtuTx:0,ipRx:0,ipTx:0};
+ for(const item of frames){const d=String(item.dir||'').toUpperCase();
+  if(/RTU/.test(d)&&/RX/.test(d))counts.rtuRx++;
+  if(/RTU/.test(d)&&/TX/.test(d))counts.rtuTx++;
+  if(/(?:TCP|UDP|IP)/.test(d)&&/RX/.test(d))counts.ipRx++;
+  if(/(?:TCP|UDP|IP)/.test(d)&&/TX/.test(d))counts.ipTx++;
+ }
+ document.getElementById('dashRtuRx').textContent=counts.rtuRx;
+ document.getElementById('dashRtuTx').textContent=counts.rtuTx;
+ document.getElementById('dashIpRx').textContent=counts.ipRx;
+ document.getElementById('dashIpTx').textContent=counts.ipTx;
+}
+async function refresh(){try{let r=await fetch('/frames');if(!r.ok)throw Error('frames unavailable');let j=await r.json();const frames=Array.isArray(j.frames)?j.frames:[];document.getElementById('frames').innerHTML=frames.map(formatFrame).join('\n')||tr('Aucune trame','No frames');updateDashboard(frames);}catch(e){document.getElementById('dashWebStatus').textContent=tr('Indisponible','Unavailable');}}
 async function clearFrames(){try{await fetch('/clear',{method:'POST'});document.getElementById('frames').textContent=tr('Aucune trame','No frames');}catch(e){}}
-async function updateListenState(){try{let r=await fetch('/listen');let j=await r.json();document.getElementById('listenBtn').textContent=j.listening?tr('Arrêter l’écoute RTU','Stop RTU listening'):tr('Reprendre l’écoute RTU','Resume RTU listening');document.getElementById('listenState').textContent=j.listening?tr('Écoute RTU active','RTU listening'):tr('Écoute RTU suspendue','RTU listening paused');}catch(e){}}
+async function updateListenState(){try{let r=await fetch('/listen');let j=await r.json();document.getElementById('listenBtn').textContent=j.listening?tr('Arrêter l’écoute RTU','Stop RTU listening'):tr('Reprendre l’écoute RTU','Resume RTU listening');document.getElementById('listenState').textContent=j.listening?tr('Écoute RTU active','RTU listening'):tr('Écoute RTU suspendue','RTU listening paused');document.getElementById('dashListen').textContent=j.listening?tr('Active','Active'):tr('Suspendue','Paused');}catch(e){}}
 async function toggleListen(){try{await fetch('/listen',{method:'POST'});await updateListenState();}catch(e){document.getElementById('listenState').textContent=tr('Erreur de commande','Command error');}}
 async function sendManual(){let frame=document.getElementById('rtuFrame').value;let out=document.getElementById('manualResponse');out.textContent=tr('Envoi en cours…','Sending…');try{let r=await fetch('/manual',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'frame='+encodeURIComponent(frame)});const responseText=await r.text();out.textContent=translateValue(responseText);refresh();}catch(e){out.textContent=tr('Erreur de communication avec la passerelle','Gateway communication error');}}
 updateListenState();refresh();setInterval(refresh,1500);
