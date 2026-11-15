@@ -97,3 +97,13 @@ The `TCP CONNECT` diagnostics display the station IP reported by ESPHome's Wi-Fi
 ## `CRC ERROR` appears in the frame log
 
 The gateway intentionally drops RTU frames with an invalid CRC. In TCP Client mode, the bad RTU request is not sent to the remote TCP server. In TCP Server mode, the bad RTU response is not forwarded as response data and the TCP client receives gateway exception `0x0B`. Check baud rate, parity, stop bits, A+/B− polarity, shielding, termination and RS-485 direction control. Do not disable CRC validation to work around an electrical or serial-format problem.
+
+## UDP troubleshooting (v1.2.1)
+
+- **No UDP Client response:** confirm Transport = UDP, Mode = Client, numeric IPv4 destination, correct UDP port and firewall rules. Unlike TCP, UDP has no connected socket and no automatic retries; packet loss or mismatched source IP/port, transaction ID or Unit ID can cause the response to be ignored.
+- **UDP Server not responding:** confirm Transport = UDP, Mode = Server, listening port and the Modbus MBAP datagram's protocol ID and length. Verify the RTU slave address (automatic/manual), UART wiring, CRC and serial parameters.
+- **Timeout or unresponsive web UI in UDP Server:** the current RTU response wait is synchronous and can delay other processing while a downstream RTU device is silent.
+- **TCP persistence option missing:** this is expected outside TCP Client. It is deliberately hidden in TCP Server, UDP Client and UDP Server; the previous TCP preference is preserved.
+- **Cache TTL field missing:** first enable the cache checkbox for the currently selected Client or Server direction. The TTL is intentionally hidden when that direction's cache is disabled.
+
+See [TCP/UDP transport details](TCP_UDP_DEVELOPMENT.md) for limitations and validation status.
