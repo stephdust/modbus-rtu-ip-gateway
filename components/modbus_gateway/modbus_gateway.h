@@ -1906,7 +1906,21 @@ html[data-theme="light"] main>section.dashboard-status .connection-list{backgrou
 html[data-theme="light"] main>section.dashboard-status .client-table{color:#18374f}
 html[data-theme="light"] main>section.dashboard-status .client-table th{background:#e0eff9;color:#18374f}
 @media(max-width:900px){main>section.dashboard-counters,main>section:nth-of-type(6),main>.bottom-actions{grid-row:auto}}
-</style></head><body><main><nav class="ui-toolbar" aria-label="Affichage et langue"><button type="button" id="themeBtn" onclick="toggleTheme()" aria-label="Mode sombre" title="Mode sombre">☾</button><button type="button" id="langBtn" onclick="toggleLanguage()" aria-label="English" title="English">EN</button></nav><header class="brand">
+
+/* One combined toolbar immediately below the original logo */
+main>.brand{grid-row:1;grid-column:1/-1}
+main>.bottom-actions{grid-row:2;grid-column:1/-1;justify-content:flex-end;gap:12px}
+main>.bottom-actions .action-display{display:flex;align-items:center;gap:8px;margin-right:auto}
+main>.bottom-actions .action-display button{min-width:46px;min-height:44px;padding:8px 12px;font-size:16px;font-weight:700;border-radius:8px}
+main>.bottom-actions #themeBtn{background:linear-gradient(#35516f,#243c59);border-color:#648eaa}
+main>.bottom-actions #langBtn{background:linear-gradient(#2187c2,#095486);border-color:#4bbce9}
+main>section:nth-of-type(1),main>section:nth-of-type(2){grid-row:3}
+main>section:nth-of-type(3),main>section.dashboard-status{grid-row:4}
+main>section.dashboard-counters{grid-row:5}
+main>section:nth-of-type(6){grid-row:6}
+@media(max-width:900px){main>.brand,main>.bottom-actions,main>section:nth-of-type(1),main>section:nth-of-type(2),main>section:nth-of-type(3),main>section.dashboard-status,main>section.dashboard-counters,main>section:nth-of-type(6){grid-column:1;grid-row:auto}}
+@media(max-width:650px){main>.bottom-actions{justify-content:center}main>.bottom-actions .action-display{flex:1 1 100%;justify-content:center;margin-right:0}main>.bottom-actions button{flex:1 1 130px;min-width:0}main>.bottom-actions .action-display button{flex:0 0 auto}}
+</style></head><body><main><header class="brand">
 <img class="brand-logo" src="/img/logo.webp" alt="Logo passerelle Modbus"><div class="brand-version">Version )HTML";
     s += String(version_.c_str());
     s += R"HTML(</div><div><div class="brand-title">Passerelle Modbus RTU ↔ IP</div><div class="brand-sub" data-fr="Passerelle série ↔ réseau" data-en="Serial ↔ network gateway">Passerelle série ↔ réseau</div></div></header>
@@ -2138,7 +2152,7 @@ async function updateListenState(){try{let r=await fetch('/listen');let j=await 
 async function toggleListen(){try{await fetch('/listen',{method:'POST'});await updateListenState();}catch(e){document.getElementById('listenState').textContent=tr('Erreur de commande','Command error');}}
 async function sendManual(){let frame=document.getElementById('rtuFrame').value;let out=document.getElementById('manualResponse');out.textContent=tr('Envoi en cours…','Sending…');try{let r=await fetch('/manual',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'frame='+encodeURIComponent(frame)});const responseText=await r.text();out.textContent=translateValue(responseText);refresh();}catch(e){out.textContent=tr('Erreur de communication avec la passerelle','Gateway communication error');}}
 updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();refreshConnections();},1500);
-</script><div class="bottom-actions" role="group" aria-label="Actions de la passerelle"><button type="submit" form="cfg" class="bottom-save" data-fr="Enregistrer / appliquer" data-en="Save / apply">Enregistrer / appliquer</button><button type="submit" form="rebootForm" class="bottom-reboot" data-fr="Redémarrer" data-en="Restart">Redémarrer</button><button type="button" class="bottom-refresh" onclick="refresh();refreshConnections();updateListenState();" data-fr="Actualiser" data-en="Refresh">Actualiser</button></div></main></body></html>)HTML";
+</script><div class="bottom-actions" role="group" aria-label="Actions de la passerelle"><div class="action-display"><button type="button" id="themeBtn" onclick="toggleTheme()" aria-label="Mode sombre" title="Mode sombre">☾</button><button type="button" id="langBtn" onclick="toggleLanguage()" aria-label="English" title="English">EN</button></div><button type="submit" form="cfg" class="bottom-save" data-fr="Enregistrer / appliquer" data-en="Save / apply">Enregistrer / appliquer</button><button type="submit" form="rebootForm" class="bottom-reboot" data-fr="Redémarrer" data-en="Restart">Redémarrer</button><button type="button" class="bottom-refresh" onclick="refresh();refreshConnections();updateListenState();" data-fr="Actualiser" data-en="Refresh">Actualiser</button></div></main></body></html>)HTML";
     return s;
   }
 
