@@ -62,6 +62,7 @@ class ModbusGateway : public Component {
     web_.on("/save", HTTP_POST, [this]() { this->save_config_(); });
     web_.on("/reboot", HTTP_POST, [this]() { this->reboot_gateway_(); });
     web_.on("/frames", HTTP_GET, [this]() { web_.send(200, "application/json", this->frames_json_()); });
+    web_.on("/connections", HTTP_GET, [this]() { web_.sendHeader("Cache-Control", "no-store"); web_.send(200, "application/json", this->connections_json_()); });
     web_.on("/frames.txt", HTTP_GET, [this]() {
       web_.sendHeader("Content-Disposition", "attachment; filename=\"modbus-frame-capture.txt\"");
       web_.send(200, "text/plain; charset=utf-8", this->frames_text_());
@@ -1856,6 +1857,19 @@ html[data-theme="dark"] main>section.dashboard-counters output{color:#73dcff}
 html[data-theme="dark"] main>section pre{background:#061121;color:#dceeff;border:1px solid #3b6687;opacity:1}
 html[data-theme="dark"] main>section #frames{color:#e5f3ff;font-size:14px;line-height:1.55}
 @media(min-width:901px){main{width:min(100%,1320px)}}
+
+/* Live connections and frame-type colors (not color-only: labels retained) */
+main>section.dashboard-status .connection-list{margin:16px 18px 0;padding:12px;border:1px solid #32678b;border-radius:9px;background:#0b2038;color:#dcefff}
+main>section.dashboard-status .connection-list>strong{display:block;color:#7ddfff;margin-bottom:9px}
+main>section.dashboard-status .connection-entry{padding:6px 8px;margin-top:5px;border-left:3px solid #55dfaa;background:#102d43;font-family:monospace;overflow-wrap:anywhere}
+main>section #frames .frame-rtu{color:#68e0ff;font-weight:bold}
+main>section #frames .frame-ip{color:#f9be65;font-weight:bold}
+main>section #frames .frame-timing{color:#b6a4ff;font-weight:bold}
+main>section #frames .frame-other{color:#d9e9f5}
+html[data-theme="light"] main>section.dashboard-status .connection-list{background:#eaf5fd;color:#163650}
+html[data-theme="light"] main>section.dashboard-status .connection-entry{background:#d6edf9;color:#14354c}
+html[data-theme="light"] main>section #frames .frame-rtu{color:#59d8ff}
+html[data-theme="light"] main>section #frames .frame-ip{color:#ffd18b}
 </style></head><body><main><nav class="ui-toolbar" aria-label="Affichage et langue"><button type="button" id="themeBtn" onclick="toggleTheme()" aria-label="Mode sombre" title="Mode sombre">☾</button><button type="button" id="langBtn" onclick="toggleLanguage()" aria-label="English" title="English">EN</button></nav><header class="brand">
 <img class="brand-logo" src="/img/logo.webp" alt="Logo passerelle Modbus"><div class="brand-version">Version )HTML";
     s += String(version_.c_str());
@@ -1915,7 +1929,7 @@ html[data-theme="dark"] main>section #frames{color:#e5f3ff;font-size:14px;line-h
 </div>
 <p class="muted">-1 = sélection automatique de la broche. Les paramètres sont enregistrés en mémoire. Toute modification des GPIO redémarre l’ESP32.</p>
 </section>
-<section class="dashboard-status" aria-label="État de la passerelle"><h2>◉ <span data-fr="État de la passerelle" data-en="Gateway status">État de la passerelle</span></h2><div class="status-content"><div><span data-fr="Interface Web" data-en="Web interface">Interface Web</span><strong id="dashWebStatus">—</strong></div><div><span data-fr="Transport IP sélectionné" data-en="Selected IP transport">Transport IP sélectionné</span><strong id="dashTransport">—</strong></div><div><span data-fr="Mode de fonctionnement" data-en="Operating mode">Mode de fonctionnement</span><strong id="dashMode">—</strong></div><div><span data-fr="Écoute RTU" data-en="RTU listening">Écoute RTU</span><strong id="dashListen">—</strong></div></div><p class="muted" data-fr="État issu de la configuration et de l’API locale, pas un test de connexion au serveur distant." data-en="Status from configuration and local API, not a remote server connectivity test.">État issu de la configuration et de l’API locale, pas un test de connexion au serveur distant.</p></section>
+<section class="dashboard-status" aria-label="État de la passerelle"><h2>◉ <span data-fr="État de la passerelle" data-en="Gateway status">État de la passerelle</span></h2><div class="status-content"><div><span data-fr="Interface Web" data-en="Web interface">Interface Web</span><strong id="dashWebStatus">—</strong></div><div><span data-fr="Transport IP sélectionné" data-en="Selected IP transport">Transport IP sélectionné</span><strong id="dashTransport">—</strong></div><div><span data-fr="Mode de fonctionnement" data-en="Operating mode">Mode de fonctionnement</span><strong id="dashMode">—</strong></div><div><span data-fr="Écoute RTU" data-en="RTU listening">Écoute RTU</span><strong id="dashListen">—</strong></div></div><div class="connection-list"><strong data-fr="Clients / connexions IP" data-en="IP clients / connections">Clients / connexions IP</strong><div id="dashConnections" aria-live="polite">—</div></div><p class="muted" data-fr="État issu de la configuration et de l’API locale, pas un test de connexion au serveur distant." data-en="Status from configuration and local API, not a remote server connectivity test.">État issu de la configuration et de l’API locale, pas un test de connexion au serveur distant.</p></section>
 <section class="dashboard-counters" aria-label="Diagnostics des trames"><h2>▥ <span data-fr="Compteurs / Diagnostics" data-en="Counters / diagnostics">Compteurs / Diagnostics</span></h2><div class="counter-grid"><div><strong>RTU RX</strong><output id="dashRtuRx">0</output></div><div><strong>RTU TX</strong><output id="dashRtuTx">0</output></div><div><strong>IP RX</strong><output id="dashIpRx">0</output></div><div><strong>IP TX</strong><output id="dashIpTx">0</output></div></div><p class="muted" data-fr="Nombre d’entrées correspondantes parmi les 64 dernières lignes du journal ; ce ne sont pas des compteurs cumulés." data-en="Matching entries in the most recent 64 log lines; these are not lifetime counters.">Nombre d’entrées correspondantes parmi les 64 dernières lignes du journal ; ce ne sont pas des compteurs cumulés.</p></section>
 <form id="cfg" method="POST" action="/save"><input type="hidden" id="form_lang" name="lang" value="fr"><div class="apply-panel"><div><strong>Enregistrement global</strong><div class="muted">Les paramètres des sections 1, 2 et 3 seront enregistrés ensemble.</div></div><button type="submit">Enregistrer / appliquer</button></div></form>
 <form id="rebootForm" method="POST" action="/reboot"><input type="hidden" id="reboot_lang" name="lang" value="fr"><div class="reboot-panel"><div><strong>Redémarrer la passerelle</strong><div class="muted">Redémarre l’ESP32 sans modifier les paramètres enregistrés.</div></div><button type="submit">Redémarrer</button></div></form>
@@ -2029,7 +2043,7 @@ document.querySelector('select[name="mode"]').addEventListener('change',toggleCa
 document.querySelector('input[name="cache_client"]').addEventListener('change',toggleCacheFields);
 document.querySelector('input[name="cache_server"]').addEventListener('change',toggleCacheFields);toggleCacheFields();
 function escapeHtml(value){return String(value).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
-function formatFrame(x){const prefix=x.time+' | '+translateValue(x.dir)+' | ';const isRtu=x.dir.startsWith('RTU')||x.dir==='MANUAL RTU';const bytes=x.hex.trim().split(/\s+/).filter(Boolean);if(!isRtu||bytes.length<3)return prefix+escapeHtml(translateValue(x.hex));const vals=bytes.map(b=>parseInt(b,16));if(vals.some(v=>!Number.isFinite(v)))return prefix+x.hex;const calculated=crc16Modbus(vals.slice(0,-2));const crcOk=vals[vals.length-2]===(calculated&255)&&vals[vals.length-1]===((calculated>>8)&255);const payload=bytes.slice(0,-2).join(' ');const crc='<span class=\"crc-byte\">'+bytes[bytes.length-2]+'</span> <span class=\"crc-byte\">'+bytes[bytes.length-1]+'</span>';return prefix+payload+' '+crc+'  <span class=\"'+(crcOk?'crc-ok':'crc-bad')+'\">CRC '+(crcOk?'OK':tr('Erreur','Error'))+'</span>';}
+function formatFrame(x){const kind=/RTU/i.test(x.dir)?'rtu':/(TCP|UDP|IP)/i.test(x.dir)?'ip':/TIMING/i.test(x.dir)?'timing':'other';const prefix='<span class="frame-'+kind+'">'+escapeHtml(x.time)+' | '+escapeHtml(translateValue(x.dir))+'</span> | ';const isRtu=x.dir.startsWith('RTU')||x.dir==='MANUAL RTU';const bytes=x.hex.trim().split(/\s+/).filter(Boolean);if(!isRtu||bytes.length<3)return prefix+escapeHtml(translateValue(x.hex));const vals=bytes.map(b=>parseInt(b,16));if(vals.some(v=>!Number.isFinite(v)))return prefix+x.hex;const calculated=crc16Modbus(vals.slice(0,-2));const crcOk=vals[vals.length-2]===(calculated&255)&&vals[vals.length-1]===((calculated>>8)&255);const payload=bytes.slice(0,-2).join(' ');const crc='<span class=\"crc-byte\">'+bytes[bytes.length-2]+'</span> <span class=\"crc-byte\">'+bytes[bytes.length-1]+'</span>';return prefix+payload+' '+crc+'  <span class=\"'+(crcOk?'crc-ok':'crc-bad')+'\">CRC '+(crcOk?'OK':tr('Erreur','Error'))+'</span>';}
 function updateDashboard(frames){
  const mode=document.querySelector('select[name="mode"]').value;
  const transport=document.querySelector('select[name="transport"]').value;
@@ -2048,14 +2062,60 @@ function updateDashboard(frames){
  document.getElementById('dashIpRx').textContent=counts.ipRx;
  document.getElementById('dashIpTx').textContent=counts.ipTx;
 }
+async function refreshConnections(){
+ try{
+  const r=await fetch('/connections',{cache:'no-store'});if(!r.ok)throw Error('connections');
+  const j=await r.json(),el=document.getElementById('dashConnections');
+  if(j.mode==='SERVER'&&j.transport==='TCP'){
+   el.textContent=j.clients.length?'':tr('Aucun client TCP connecté','No TCP clients connected');
+   for(const c of j.clients){const line=document.createElement('div');line.className='connection-entry';line.textContent='#'+c.slot+'  '+c.ip+':'+c.port;el.appendChild(line);}
+  }else if(j.mode==='SERVER'){el.textContent=tr('Serveur UDP : sans connexion persistante (clients non suivis)','UDP server: connectionless (clients not tracked)');}
+  else if(j.transport==='TCP'){el.textContent=tr('Serveur distant : ','Remote server: ')+j.remote+' — '+(j.connected?tr('connecté','connected'):tr('déconnecté','disconnected'));}
+  else{el.textContent=tr('Destination UDP : ','UDP destination: ')+j.remote+tr(' (sans connexion persistante)',' (connectionless)');}
+ }catch(e){document.getElementById('dashConnections').textContent=tr('État indisponible','Status unavailable');}
+}
 async function refresh(){try{let r=await fetch('/frames');if(!r.ok)throw Error('frames unavailable');let j=await r.json();const frames=Array.isArray(j.frames)?j.frames:[];document.getElementById('frames').innerHTML=frames.map(formatFrame).join('\n')||tr('Aucune trame','No frames');updateDashboard(frames);}catch(e){document.getElementById('dashWebStatus').textContent=tr('Indisponible','Unavailable');}}
 async function clearFrames(){try{await fetch('/clear',{method:'POST'});document.getElementById('frames').textContent=tr('Aucune trame','No frames');}catch(e){}}
 async function updateListenState(){try{let r=await fetch('/listen');let j=await r.json();document.getElementById('listenBtn').textContent=j.listening?tr('Arrêter l’écoute RTU','Stop RTU listening'):tr('Reprendre l’écoute RTU','Resume RTU listening');document.getElementById('listenState').textContent=j.listening?tr('Écoute RTU active','RTU listening'):tr('Écoute RTU suspendue','RTU listening paused');document.getElementById('dashListen').textContent=j.listening?tr('Active','Active'):tr('Suspendue','Paused');}catch(e){}}
 async function toggleListen(){try{await fetch('/listen',{method:'POST'});await updateListenState();}catch(e){document.getElementById('listenState').textContent=tr('Erreur de commande','Command error');}}
 async function sendManual(){let frame=document.getElementById('rtuFrame').value;let out=document.getElementById('manualResponse');out.textContent=tr('Envoi en cours…','Sending…');try{let r=await fetch('/manual',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'frame='+encodeURIComponent(frame)});const responseText=await r.text();out.textContent=translateValue(responseText);refresh();}catch(e){out.textContent=tr('Erreur de communication avec la passerelle','Gateway communication error');}}
-updateListenState();refresh();setInterval(refresh,1500);
+updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();refreshConnections();},1500);
 </script></main></body></html>)HTML";
     return s;
+  }
+
+  String connections_json_() {
+    String out = "{\"mode\":\"";
+    out += tcp_mode_;
+    out += "\",\"transport\":\"";
+    out += transport_;
+    out += "\",\"clients\":[";
+    if (tcp_mode_ == "SERVER" && transport_ == "TCP") {
+      bool first = true;
+      for (size_t i = 0; i < MAX_TCP_CLIENTS; ++i) {
+        const auto &slot = tcp_clients_[i];
+        if (!slot.client || (!slot.client.connected() && !slot.client.available())) continue;
+        if (!first) out += ",";
+        first = false;
+        out += "{\"slot\":";
+        out += String(i + 1);
+        out += ",\"ip\":\"";
+        out += slot.client.remoteIP().toString();
+        out += "\",\"port\":";
+        out += String(slot.client.remotePort());
+        out += "}";
+      }
+    }
+    out += "],\"remote\":\"";
+    if (tcp_mode_ == "CLIENT") {
+      out += cfg_host_.c_str();
+      out += ":";
+      out += String(cfg_port_);
+    }
+    out += "\",\"connected\":";
+    out += (tcp_mode_ == "CLIENT" && transport_ == "TCP" && client_.connected()) ? "true" : "false";
+    out += "}";
+    return out;
   }
 
   String frames_json_() {
