@@ -10,7 +10,7 @@ A Wi-Fi Modbus gateway built with **ESPHome**, **ESP32-S3** and the **Arduino fr
 
 > **Reference hardware:** [Waveshare ESP32-S3-RS485-CAN](https://docs.waveshare.com/ESP32-S3-RS485-CAN). The project defaults match this board's RS-485 signals: TX GPIO17, RX GPIO18 and RS485 enable GPIO21. The project maintainer reports successful testing with this device, including four connected Modbus TCP clients.
 
-> **Development branch (`feature/modbus-rtu-ip-udp`):** this branch extends the stable TCP gateway with **TCP Client, TCP Server, UDP Client and UDP Server**. The maintainer reports successful firmware installation and functional checks of all four modes; robustness testing remains pending. The stable TCP-only release is retained on `main`. See [TCP/UDP development and UI behavior](docs/TCP_UDP_DEVELOPMENT.md).
+> **Version 1.2.1 on `main`:** supports **TCP Client, TCP Server, UDP Client and UDP Server**. The maintainer reports successful functional tests of the four modes; robustness testing remains pending. See [TCP/UDP development and UI behavior](docs/TCP_UDP_DEVELOPMENT.md).
 
 ### TCP/UDP development web UI
 
@@ -68,9 +68,27 @@ See [Cache behavior and configuration](docs/CACHE.md) for details. The cache opt
 
 ## Web interface (v1.2.1)
 
-**Current screenshots pending.** Earlier screenshots from v1.1.13 have been removed because they do not show the current TCP/UDP interface. The current firmware offers **Modbus IP** transport selection (TCP or UDP), **Client/Server** mode, mode-specific cache controls with a conditional TTL input, RTU configuration, GPIO settings, and frame diagnostics. The **persistent TCP connection** checkbox appears only in **TCP Client**. See [Quick start](docs/QUICK_START.md) for the current controls.
+### Aperçus de l'interface Web v1.2.1 — simulations
 
-To add accurate screenshots, capture the actual v1.2.1 web page after flashing the firmware; do not reuse v1.1.13 illustrations.
+> **Illustrations simulées, et non captures réelles de l'ESP32.** Elles reprennent l'organisation actuelle (logo, barre d'actions, paramètres et tableau de connexions), avec des adresses et états d'exemple. Les vrais journaux de trames, compteurs et connexions dépendent du matériel.
+
+**TCP Client (RTU → IP)**
+
+![Simulation de l'interface tcp-client v1.2.1](docs/assets/ui-v1.2.1-tcp-client-simulation.svg)
+
+**TCP Serveur (IP → RTU)**
+
+![Simulation de l'interface tcp-server v1.2.1](docs/assets/ui-v1.2.1-tcp-server-simulation.svg)
+
+**UDP Client (RTU → IP)**
+
+![Simulation de l'interface udp-client v1.2.1](docs/assets/ui-v1.2.1-udp-client-simulation.svg)
+
+**UDP Serveur (IP → RTU)**
+
+![Simulation de l'interface udp-server v1.2.1](docs/assets/ui-v1.2.1-udp-server-simulation.svg)
+
+Le panneau de diagnostics des trames, situé sous les paramètres, distingue **RTU RAW** (cyan), **TCP/UDP RAW** (orange) et les mesures **TIMING** (violet). La barre d'actions sous le logo regroupe le thème, la langue, **Enregistrer / appliquer**, **Redémarrer** et **Actualiser**.
 
 ## Hardware
 
