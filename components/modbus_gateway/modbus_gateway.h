@@ -1707,11 +1707,19 @@ html[data-theme="dark"] pre{background:#080e1b;color:#dbeafe;border:1px solid #3
 .section-badge-ip small{font-size:11px;min-width:30px}
 @media(hover:hover){h2:hover>.section-badge{transform:translateY(-2px);box-shadow:0 5px 12px #0369a155}}
 @media(max-width:560px){.section-badge{flex-basis:66px;width:66px;height:52px;border-radius:11px}.section-badge small{font-size:8px}}
+
+/* TCP/UDP illustration replaces the obsolete TCP-only image. */
+.section-badge-ip{background:linear-gradient(150deg,#e6fbff,#b1eaff);border-color:#00c8ef}
+.section-badge-ip .ip-art{display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;gap:0}
+.section-badge-ip .ip-title{font:800 9px/1 Arial,sans-serif;color:#fff;background:linear-gradient(#047ec0,#00396c);border-radius:5px;padding:2px 4px;white-space:nowrap}
+.section-badge-ip .ip-protocol{font:800 7px/1.1 Arial,sans-serif;color:#003d68;white-space:nowrap}
+.section-badge-ip svg{width:100%;height:26px;flex-shrink:1}
+@media(max-width:560px){.section-badge-ip .ip-title{font-size:8px}.section-badge-ip .ip-protocol{font-size:6px}.section-badge-ip svg{height:23px}}
 </style></head><body><main><nav class="ui-toolbar" aria-label="Affichage et langue"><button type="button" id="themeBtn" onclick="toggleTheme()" aria-label="Mode sombre" title="Mode sombre">☾</button><button type="button" id="langBtn" onclick="toggleLanguage()" aria-label="English" title="English">EN</button></nav><header class="brand">
 <img class="brand-logo" src="/img/logo.webp" alt="Logo passerelle Modbus"><div class="brand-version">Version )HTML";
     s += String(version_.c_str());
     s += R"HTML(</div><div><div class="brand-title">Passerelle Modbus RTU ↔ IP</div><div class="brand-sub" data-fr="Passerelle série ↔ réseau" data-en="Serial ↔ network gateway">Passerelle série ↔ réseau</div></div></header>
-<section><h2><span class="section-badge section-badge-ip" aria-hidden="true"><img src="/img/modbus-tcp.jpg" alt=""><small>IP</small></span>1. Modbus IP</h2><div class="tcp-layout"><div class="tcp-col"><div><label>Mode</label><select name="mode" form="cfg">)HTML";
+<section><h2><span class="section-badge section-badge-ip" aria-hidden="true"><span class="ip-art"><span class="ip-title">Modbus IP</span><span class="ip-protocol">TCP / UDP</span><svg viewBox="0 0 72 32" xmlns="http://www.w3.org/2000/svg"><path d="M5 18L21 7l7 6-16 12z" fill="#31c7ff" stroke="#bdf5ff" stroke-width="1.5"/><path d="M9 18l8-6 7 3-9 7z" fill="#00578e"/><path d="M26 17h12" stroke="#19d4ff" stroke-width="3" stroke-linecap="round"/><rect x="39" y="6" width="15" height="21" rx="3" fill="#06416e" stroke="#58d8ff" stroke-width="1.5"/><path d="M42 11h9M42 16h9M42 21h9" stroke="#62dfff" stroke-width="1.5"/><circle cx="51" cy="11" r="1" fill="#b2ff70"/><rect x="58" y="9" width="12" height="14" rx="2" fill="#077db7" stroke="#a2eeff" stroke-width="1.5"/><path d="M61 19v-4m3 4v-7m3 7v-5" stroke="#e9fcff" stroke-width="1.5"/></svg></span></span>1. Modbus IP</h2><div class="tcp-layout"><div class="tcp-col"><div><label>Mode</label><select name="mode" form="cfg">)HTML";
     s += "<option value=\"CLIENT\"" + String(tcp_mode_ == "CLIENT" ? " selected" : "") + ">Client IP (RTU vers serveur)</option>";
     s += "<option value=\"SERVER\"" + String(tcp_mode_ == "SERVER" ? " selected" : "") + ">Serveur IP (client IP vers RTU)</option>";
     s += R"HTML(</select></div><div><label>Transport</label><select name="transport" form="cfg"><option value="TCP")HTML";
