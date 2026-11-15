@@ -18,6 +18,9 @@ The development interface labels the network section **Modbus IP**, offers a TCP
 
 ## Transport and operating modes (v1.2.1)
 
+**Important — transport compatibility:** The Modbus IP client and its corresponding Modbus IP server **must use the same transport protocol**: **TCP Client ↔ TCP Server**, or **UDP Client ↔ UDP Server**. A TCP client cannot communicate directly with a UDP server, nor can a UDP client communicate directly with a TCP server. Using the same port number (for example, 502) does not make the two transports interchangeable.
+
+
 | Transport | Client mode: RTU → IP | Server mode: IP → RTU |
 |---|---|---|
 | **TCP** | RTU requests forwarded over a TCP connection to the remote Modbus server | Accepts Modbus TCP requests (up to four simultaneous TCP connections) and forwards them to RS-485 |
