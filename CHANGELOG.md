@@ -1,4 +1,11 @@
-## 1.2.7 — Transport-neutral mode selector (2026-11-18; source on `main`, release publication pending)
+## 1.2.8 — Safe recovery of stale persistent TCP connections (2026-11-18; source on `main`, not yet released)
+
+- In TCP Client mode with persistent connections enabled, if a reused socket fails during request write, disconnects before the full reply, or times out waiting for the reply, reconnect and retry the original Modbus read **once** for function codes **03** (holding registers) and **04** (input registers).
+- Never automatically replay Modbus write requests; they may have been executed even when the TCP reply was lost.
+- Emit `TCP RETRY` in the frame/event log; after one failed retry, retain existing Modbus exception / silent-timeout behavior.
+- UDP and TCP Server behavior unchanged. Compilation and device testing pending.
+
+## 1.2.7 — Transport-neutral mode selector (2026-11-18; source on `main`, released as v1.2.7)
 
 - Clarified the Web UI: Mode now shows **Client (RTU → IP)** or **Server (IP → RTU)**, while Transport independently selects **TCP** or **UDP**.
 - Corrected English translations and cache descriptions to avoid calling UDP traffic TCP.
