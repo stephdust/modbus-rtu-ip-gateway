@@ -12,11 +12,11 @@ A Wi-Fi Modbus gateway built with **ESPHome**, **ESP32-S3** and the **Arduino fr
 
 > **Version 1.2.7 on `main`:** supports **TCP Client, TCP Server, UDP Client and UDP Server**. The maintainer reports successful functional tests of the four modes; robustness testing remains pending. See [TCP/UDP development and UI behavior](docs/TCP_UDP_DEVELOPMENT.md).
 
-### TCP/UDP web UI (v1.2.6)
+### TCP/UDP web UI (v1.2.7)
 
-The v1.2.6 source interface labels the network section **Modbus IP**, offers a TCP/UDP selector, and includes four harmonized blue/cyan section thumbnails matching the RTU ↔ IP header artwork. The IP thumbnail explicitly shows **TCP / UDP**. The **Persistent TCP connection** control is displayed only for **TCP Client**; it is hidden for TCP Server and both UDP modes, and the stored TCP setting is preserved while UDP is selected.
+The v1.2.7 source interface labels the network section **Modbus IP**, offers a TCP/UDP selector, and includes four harmonized blue/cyan section thumbnails matching the RTU ↔ IP header artwork. The IP thumbnail explicitly shows **TCP / UDP**. The **Persistent TCP connection** control is displayed only for **TCP Client**; it is hidden for TCP Server and both UDP modes, and the stored TCP setting is preserved while UDP is selected.
 
-## Transport and operating modes (v1.2.6)
+## Transport and operating modes (v1.2.7)
 
 **Important — transport compatibility:** The Modbus IP client and its corresponding Modbus IP server **must use the same transport protocol**: **TCP Client ↔ TCP Server**, or **UDP Client ↔ UDP Server**. A TCP client cannot communicate directly with a UDP server, nor can a UDP client communicate directly with a TCP server. Using the same port number (for example, 502) does not make the two transports interchangeable.
 
@@ -264,4 +264,4 @@ GPLv3 license text.
 Current source version: **v1.2.7** on `main` (fixed/adaptive cache TTL). The last release confirmed published by the maintainer is **v1.2.1**; v1.2.7 has not been published through the available GitHub integration. The v1.2.7 firmware has not yet been build- or hardware-validated. The Web UI supports mode-aware response caches, a TCP-only persistent connection setting, bilingual labels and harmonized RTU/IP artwork. See [CHANGELOG.md](CHANGELOG.md) for the release history, [docs/CLIENT_TCP_ASYNC.md](docs/CLIENT_TCP_ASYNC.md) for cooperative Client TCP handling, and [docs/CACHE.md](docs/CACHE.md) for cache behavior and data-freshness limits.
 
 
-> **Web UI v1.2.7:** The Mode selector is transport-neutral: **Client (RTU → IP)** or **Server (IP → RTU)**. Choose **TCP** or **UDP** independently in Transport. Earlier v1.2.6 screenshots remain historical references and may display older labels.
+> **Web UI v1.2.7:** The Mode selector is transport-neutral: **Client (RTU → IP)** or **Server (IP → RTU)**. Choose **TCP** or **UDP** independently in Transport. The screenshots above show the current v1.2.7 labels.
