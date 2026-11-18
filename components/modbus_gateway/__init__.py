@@ -23,35 +23,40 @@ def _install_offline_gateway_link():
     script = r"""
 <script>
 (() => {
-  const url = location.protocol + "//" + location.hostname + "/";
-  function linkify(root) {
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    const matches = [];
-    while (walker.nextNode()) {
-      const node = walker.currentNode;
-      if (node.nodeValue.trim() !== url) continue;
+  // Match the URL shown by the Interface web text sensor. Do not depend
+  // on the frontend's precise DOM markup or its unit formatting.
+  const gatewayURL = location.protocol + "//" + location.hostname + "/";
+  function walk(root) {
+    const iterator = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    while (iterator.nextNode()) {
+      const node = iterator.currentNode;
       const parent = node.parentElement;
       if (!parent || parent.closest("a,script,style,textarea")) continue;
-      matches.push(node);
+      if (node.nodeValue.includes(gatewayURL)) nodes.push(node);
     }
-    for (const node of matches) {
-      const a = document.createElement("a");
-      a.href = url;
-      a.target = "_blank";
-      a.rel = "noopener noreferrer";
-      a.textContent = url;
-      a.style.cssText = "color:#2196f3;text-decoration:underline;overflow-wrap:anywhere";
-      node.replaceWith(a);
+    for (const node of nodes) {
+      const value = node.nodeValue;
+      const pos = value.indexOf(gatewayURL);
+      if (pos < 0) continue;
+      const before = document.createTextNode(value.slice(0, pos));
+      const link = document.createElement("a");
+      link.href = gatewayURL;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = gatewayURL;
+      link.style.cssText = "color:#42a5f5;text-decoration:underline;cursor:pointer";
+      const after = document.createTextNode(value.slice(pos + gatewayURL.length));
+      node.replaceWith(before, link, after);
     }
     for (const el of root.querySelectorAll("*")) {
-      if (el.shadowRoot) linkify(el.shadowRoot);
+      if (el.shadowRoot) walk(el.shadowRoot);
     }
   }
-  const update = () => linkify(document);
-  if (document.readyState === "loading")
-    document.addEventListener("DOMContentLoaded", update, {once:true});
-  else update();
-  setInterval(update, 1500);
+  function refresh() { walk(document); }
+  document.addEventListener("DOMContentLoaded", refresh);
+  // ESPHome's UI is reactive; the text sensor may arrive after page load.
+  setInterval(refresh, 750);
 })();
 </script>"""
 
