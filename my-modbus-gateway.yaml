@@ -31,6 +31,10 @@ captive_portal:
 
 web_server:
   port: 8080
+  version: 3
+  # Optional add-on: make the "Interface web" URL clickable.
+  # Keep the default ESPHome UI script; js_include is loaded alongside it.
+  js_include: web-link-addon.js
 
 api:
   encryption:
