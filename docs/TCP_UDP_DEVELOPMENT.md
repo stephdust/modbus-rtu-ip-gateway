@@ -39,3 +39,7 @@ Dans l'interface, **Connexion TCP persistante** est affichée uniquement en **TC
 
 
 > **Web UI v1.2.7:** The Mode selector is transport-neutral: **Client (RTU → IP)** or **Server (IP → RTU)**. Choose **TCP** or **UDP** independently in Transport. The documentation gallery uses v1.2.7 screenshots.
+
+## Persistent TCP connection recovery (source v1.2.8)
+
+For TCP Client mode with the persistent option enabled, a request on a reused connection may encounter a peer-closed socket. On TCP write failure, connection closure while waiting for a full response, or response timeout, the gateway makes at most one new connection and retries the original read only for Modbus FC03/FC04. A `TCP RETRY` event identifies this recovery. Failed retries use the existing RTU exception or silent-timeout handling. No replay is performed for writes or UDP requests. The implementation is committed to `main`; compilation and hardware validation are pending.
