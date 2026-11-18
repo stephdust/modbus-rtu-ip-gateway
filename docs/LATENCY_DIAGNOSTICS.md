@@ -1,6 +1,6 @@
 # Byte-level latency diagnostics
 
-Original TCP diagnostics introduced in **1.1.13**; current gateway version **1.2.1** supports TCP/UDP. The byte-level timing labels below document the TCP paths specifically. UDP frame diagnostics are available, but do not assume that every TCP socket-specific timing label applies to UDP.
+Original TCP diagnostics were introduced in **1.1.13**. The current source on `main` is **v1.3.2** and supports TCP/UDP; the optional background-refresh cache adds `CACHE STALE`, `CACHE REFRESH` and `RTU DEADLINE` events. The byte-level timing labels below document the TCP paths specifically. UDP frame diagnostics are available, but do not assume that every TCP socket-specific timing label applies to UDP.
 
 The frame diagnostics now expose receive timing in addition to the transaction-level timings.
 All values are reported in microseconds (`us`) in the Web trace and in the exported text capture.
