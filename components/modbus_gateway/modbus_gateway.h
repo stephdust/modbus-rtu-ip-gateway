@@ -727,9 +727,41 @@ class ModbusGateway : public Component {
     }
   }
 
+  bool swr_client_mode_() const {
+    return tcp_mode_ == "CLIENT" && transport_ == "TCP" &&
+           cache_client_enabled_ && cache_swr_enabled_;
+  }
+
+  // The screen may have abandoned the previous RTU request while TCP/RS485
+  // was busy. Sending a late RTU frame can collide with its next request.
+  // This guard is deliberately opt-in to preserve legacy behavior.
+  bool client_rtu_reply_is_timely_(size_t response_pdu_size,
+                                    uint32_t request_started_us) {
+    if (!swr_client_mode_()) return true;
+    const uint8_t bits_per_character = uint8_t(
+        1U + cfg_data_bits_ + (cfg_parity_ == "NONE" ? 0U : 1U) + cfg_stop_bits_);
+    const bool fits = gateway_policy::rtu_reply_fits_window(
+        uint32_t(micros() - request_started_us), response_pdu_size + 3U,
+        cfg_baud_, bits_per_character, rtu_reply_window_ms_);
+    // A new master request already in our UART FIFO/buffer takes precedence.
+    const bool master_already_sending = !rx_.empty() || Serial1.available() > 0;
+    if (fits && !master_already_sending) return true;
+    ++rtu_late_reply_dropped_;
+    add_event_("RTU DEADLINE", String("Suppressed late RTU reply; elapsed=") +
+               String(uint32_t(micros() - request_started_us) / 1000U) +
+               " ms; response bytes=" + String(response_pdu_size + 3U) +
+               "; window=" + String(rtu_reply_window_ms_) +
+               " ms; pending master bytes=" + (master_already_sending ? "yes" : "no") + ".");
+    return false;
+  }
+
   void parse_rtu_() {
-    if (client_txn_.state != ClientTxnState::IDLE) return;
-    while (!rx_.empty() && client_txn_.state == ClientTxnState::IDLE) {
+    // A background refresh must NEVER block RTU cache hits. A foreground
+    // network transaction remains serialized, as before.
+    if (client_txn_.state != ClientTxnState::IDLE &&
+        !client_txn_.background_refresh) return;
+    while (!rx_.empty() && (client_txn_.state == ClientTxnState::IDLE ||
+                             client_txn_.background_refresh)) {
       // The RTU slave address is forwarded dynamically as the TCP Unit ID.
       if (rx_[0] == 0 || rx_[0] > 247) {
         rx_.erase(rx_.begin());
@@ -777,19 +809,51 @@ class ModbusGateway : public Component {
       if (cache_client_enabled_ && cacheable_read) {
         uint32_t cache_age_ms = 0;
         cached_response_tmp_.clear();
-        if (cache_lookup_(CACHE_DIRECTION_CLIENT, unit_id, pdu, cached_response_tmp_, cache_age_ms)) {
-          add_event_("CACHE HIT", String("Client mode | Unit ID=") + String(unit_id) +
+        bool is_stale = false;
+        if (cache_lookup_(CACHE_DIRECTION_CLIENT, unit_id, pdu, cached_response_tmp_,
+                          cache_age_ms, &is_stale)) {
+          if (is_stale) ++cache_stale_hits_;
+          else ++cache_fresh_hits_;
+          add_event_(is_stale ? "CACHE STALE" : "CACHE HIT",
+                     String("Client mode | Unit ID=") + String(unit_id) +
                      "; Function=" + String(pdu[0]) + "; Address=" + String(cache_start) +
                      "; Quantity=" + String(cache_quantity) + "; Age=" + String(cache_age_ms) + " ms.");
-          const uint32_t rtu_tx_us = send_rtu_(unit_id, cached_response_tmp_);
-          add_event_("TIMING", String("CLIENT cache=hit; age=") + String(cache_age_ms) +
+          uint32_t rtu_tx_us = 0U;
+          if (client_rtu_reply_is_timely_(cached_response_tmp_.size(), end_to_end_started_us))
+            rtu_tx_us = send_rtu_(unit_id, cached_response_tmp_);
+          add_event_("TIMING", String("CLIENT cache=") + (is_stale ? "stale" : "hit") +
+                     "; age=" + String(cache_age_ms) +
                      " ms; RTU response TX=" + String(rtu_tx_us) + " us; total=" +
                      String(micros() - end_to_end_started_us) + " us.");
+          // Refresh only stale validated reads, at most one in flight. Cache
+          // remains usable for every other RTU request during the refresh.
+          if (is_stale && swr_client_mode_() &&
+              client_txn_.state == ClientTxnState::IDLE &&
+              (last_background_refresh_ms_ == 0U ||
+               uint32_t(millis() - last_background_refresh_ms_) >= 1000U)) {
+            last_background_refresh_ms_ = millis();
+            ++background_refresh_started_;
+            add_event_("CACHE REFRESH", String("Background TCP refresh; Unit ID=") +
+                       String(unit_id) + "; Function=" + String(pdu[0]) +
+                       "; Address=" + String(cache_start) + "; Quantity=" +
+                       String(cache_quantity) + ".");
+            start_client_transaction_(unit_id, pdu, micros(), true, false, true);
+          }
           continue;
         }
         add_event_("CACHE MISS", String("Client mode | Unit ID=") + String(unit_id) +
                    "; Function=" + String(pdu[0]) + "; Address=" + String(cache_start) +
                    "; Quantity=" + String(cache_quantity) + ".");
+      }
+      // An uncached read/write is more important than background prefetch.
+      // Close the pending refresh socket, ensuring its TCP response cannot
+      // later be mistaken for this foreground RTU request.
+      if (client_txn_.state != ClientTxnState::IDLE &&
+          client_txn_.background_refresh) {
+        add_event_("CACHE REFRESH", "Cancelled background read for uncached foreground RTU request.");
+        client_.stop();
+        reset_client_transaction_();
+        ++background_refresh_failed_;
       }
       // Start the TCP exchange and return immediately. process_client_transaction_()
       // will collect the MBAP header and PDU over subsequent loop iterations.
