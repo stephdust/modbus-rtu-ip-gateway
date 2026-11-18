@@ -1876,6 +1876,7 @@ main>section.dashboard-status .status-content>div{display:flex;align-items:cente
 main>section.dashboard-status .status-content strong{color:#6fe7b1;text-align:right}
 main>section.dashboard-counters .counter-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:0 18px}
 main>section.dashboard-counters .counter-grid>div{padding:14px;background:#0b2038;border:1px solid #32638a;border-radius:9px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.frame-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px}
 main>section.dashboard-counters output{font-size:22px;color:#68dfff;font-weight:700;font-variant-numeric:tabular-nums}
 main>section.dashboard-status p,main>section.dashboard-counters p{margin:14px 18px 0}
 main>section:nth-of-type(6) #frames{min-height:300px}
@@ -2070,12 +2071,12 @@ main>.bottom-actions>button{height:44px!important;min-height:44px!important;max-
 <section><h2><span class="section-badge section-badge-log" aria-hidden="true"><img src="/img/frame-diagnostics.jpg" alt=""><small>LOG</small></span>4. Debug des trames</h2>
 <p class="muted">RTU RX/TX et IP TCP/UDP TX/RX · rafraîchissement automatique toutes les 1,5 s</p>
 <p class="muted">Les tentatives de connexion TCP et les erreurs réseau sont également affichées dans cette fenêtre.</p>
-<p><button id="listenBtn" type="button" onclick="toggleListen()">Arrêter l’écoute RTU</button> <span id="listenState">Écoute RTU active</span></p>
+
 <div style="margin-top:14px"><label for="rtuFrame">Trame RTU à envoyer (hexadécimal, avec adresse et CRC, ex. 0B 03 00 00 00 01 84 A0)</label>
 <input id="rtuFrame" placeholder="0B 03 00 00 00 01 ... CRC" autocomplete="off">
 <button type="button" onclick="sendManual()" style="margin-top:10px">Envoyer au serveur TCP</button></div>
 <p class="muted">Réponse du serveur Modbus IP :</p><pre id="manualResponse">Aucune requête manuelle</pre>
-<p style="margin-bottom:6px"><button type="button" onclick="clearFrames()">Vider l’affichage des trames</button> <a class="button-link" href="/frames.txt">Exporter la capture des trames (.txt)</a></p>
+<div class="frame-actions"><button id="listenBtn" type="button" onclick="toggleListen()">Arrêter l’écoute RTU</button><button type="button" onclick="clearFrames()">Vider l’affichage des trames</button><a class="button-link" href="/frames.txt">Exporter la capture des trames (.txt)</a><span id="listenState">Écoute RTU active</span></div>
 <p class="muted">L’export contient les 64 dernières entrées mémorisées, y compris les mesures de latence.</p>
 <pre id="frames">Chargement des trames…</pre></section>
 <script>
