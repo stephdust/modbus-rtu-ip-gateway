@@ -899,13 +899,24 @@ class ModbusGateway : public Component {
     const std::vector<uint8_t> &response_pdu = client_txn_.response_pdu;
     const bool cacheable_read = client_txn_.cacheable_read;
 
-    if (response_pdu.empty() ||
-        (response_pdu[0] != request_pdu[0] && response_pdu[0] != uint8_t(request_pdu[0] | 0x80))) {
-      fail_client_transaction_("The Modbus TCP response function code does not match the request.");
+    const bool success = gateway_policy::is_success(
+        request_pdu.data(), request_pdu.size(),
+        response_pdu.data(), response_pdu.size());
+    const bool exception = gateway_policy::is_exception(
+        request_pdu.data(), request_pdu.size(),
+        response_pdu.data(), response_pdu.size());
+    if (!success && !exception) {
+      fail_client_transaction_("Invalid Modbus TCP response PDU (function, length, byte count or echoed write).");
+      return;
+    }
+    if (exception && silent_on_timeout_) {
+      add_event_("ERROR SILENT", String("Client mode | Modbus exception 0x") +
+                 String(response_pdu[1], HEX) + " suppressed; no RTU TX.");
+      reset_client_transaction_();
       return;
     }
 
-    if (response_pdu[0] == request_pdu[0]) {
+    if (success) {
       if (cacheable_read && cache_client_enabled_) {
         cache_store_(CACHE_DIRECTION_CLIENT, unit_id, request_pdu, response_pdu);
       } else if (!cacheable_read) {
@@ -973,11 +984,12 @@ class ModbusGateway : public Component {
                " us; TCP response wait=" + String(response_us) + " us; TCP first byte=" +
                String(first_byte_us) + " us; TCP first-to-last=" + String(response_span_us) +
                " us; result=ERROR.");
-    if (is_timeout && silent_on_timeout_) {
-      add_event_("TIMEOUT SILENT", String("Client mode | TCP response timeout; no RTU reply sent. Unit ID=") +
-                 String(unit_id) + "; Function=" + String(function) + ".");
+    if (silent_on_timeout_) {
+      add_event_("ERROR SILENT", String("Client mode | No RTU reply for failed IP transaction; Unit ID=") +
+                 String(unit_id) + "; Function=" + String(function) +
+                 "; timeout=" + String(is_timeout ? "yes" : "no") + ".");
       add_event_("TIMING", String("CLIENT failed transaction total=") +
-                 String(micros() - end_to_end_started_us) + " us; result=silent timeout; no RTU TX.");
+                 String(micros() - end_to_end_started_us) + " us; result=silent error; no RTU TX.");
     } else {
       const uint8_t exception_code = is_timeout ? 0x0B : 0x0A;
       std::vector<uint8_t> exception = {uint8_t(function | 0x80), exception_code};
