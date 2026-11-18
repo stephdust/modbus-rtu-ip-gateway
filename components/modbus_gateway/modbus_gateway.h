@@ -205,6 +205,7 @@ class ModbusGateway : public Component {
     ByteTiming response_timing;
     bool reused_connection{false};
     bool cacheable_read{false};
+    bool reconnect_retry_used{false};  // Only one replay for FC03/FC04 on reused TCP sockets.
   };
   ClientTransaction client_txn_;
   std::vector<uint8_t> cached_response_tmp_;
@@ -782,16 +783,19 @@ class ModbusGateway : public Component {
     client_txn_.response_timing = ByteTiming{};
     client_txn_.reused_connection = false;
     client_txn_.cacheable_read = false;
+    client_txn_.reconnect_retry_used = false;
   }
 
   void start_client_transaction_(uint8_t unit_id, const std::vector<uint8_t> &pdu,
-                                 uint32_t end_to_end_started_us, bool cacheable_read) {
+                                 uint32_t end_to_end_started_us, bool cacheable_read,
+                                 bool reconnect_retry = false) {
     if (pdu.empty() || pdu.size() > 253) return;
     reset_client_transaction_();
     client_txn_.unit_id = unit_id;
     client_txn_.request_pdu.assign(pdu.begin(), pdu.end());
     client_txn_.end_to_end_started_us = end_to_end_started_us;
     client_txn_.cacheable_read = cacheable_read;
+    client_txn_.reconnect_retry_used = reconnect_retry;
 
     if (transport_ == "UDP") {
       start_udp_client_transaction_(unit_id, pdu);
@@ -853,7 +857,7 @@ class ModbusGateway : public Component {
     if (written != request_length) {
       add_event_("TCP ERROR", "Failed to write the Modbus TCP request to the socket.");
       client_.stop();
-      fail_client_transaction_("TCP request write failed.");
+      fail_client_transaction_("TCP request write failed.", false, true);
       return;
     }
 
@@ -911,7 +915,27 @@ class ModbusGateway : public Component {
     reset_client_transaction_();
   }
 
-  void fail_client_transaction_(const char *reason, bool is_timeout = false) {
+  bool retry_disconnected_read_(const char *reason) {
+    // The peer may close a persistent TCP socket between RTU requests.
+    // Never replay writes, which might already have been executed remotely.
+    if (transport_ != "TCP" || !tcp_persistent_ || !client_txn_.reused_connection ||
+        client_txn_.reconnect_retry_used || client_txn_.request_pdu.empty()) return false;
+    const uint8_t function = client_txn_.request_pdu[0];
+    if (function != 0x03 && function != 0x04) return false;
+    const uint8_t unit_id = client_txn_.unit_id;
+    const uint32_t started_us = client_txn_.end_to_end_started_us;
+    const bool cacheable_read = client_txn_.cacheable_read;
+    const std::vector<uint8_t> request_pdu = client_txn_.request_pdu;
+    add_event_("TCP RETRY", String("Reconnecting once for read FC") + String(function) +
+               " after a reused connection failed: " + reason);
+    client_.stop();
+    start_client_transaction_(unit_id, request_pdu, started_us, cacheable_read, true);
+    return true;
+  }
+
+  void fail_client_transaction_(const char *reason, bool is_timeout = false,
+                                bool retry_if_reused = false) {
+    if (retry_if_reused && retry_disconnected_read_(reason)) return;
     const uint32_t now_us = micros();
     const bool response_wait_started = client_txn_.state != ClientTxnState::IDLE;
     const uint32_t response_us = response_wait_started ?
@@ -996,13 +1020,13 @@ class ModbusGateway : public Component {
       }
 
       if (!client_.connected() && client_.available() == 0) {
-        fail_client_transaction_("TCP server disconnected before the full Modbus response was received.");
+        fail_client_transaction_("TCP server disconnected before the full Modbus response was received.", false, true);
         return;
       }
       if (millis() - client_txn_.response_stage_started_ms >= tcp_timeout_ms_) {
         fail_client_transaction_(client_txn_.state == ClientTxnState::WAIT_MBAP ?
             "Timeout waiting for the Modbus TCP response header." :
-            "Timeout waiting for the Modbus TCP response PDU.", true);
+            "Timeout waiting for the Modbus TCP response PDU.", true, true);
         return;
       }
       // No delay/yield loop here: return to ESPHome and poll again on the next loop.
