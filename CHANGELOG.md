@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.3.2 — Optional bounded background refresh and documentation cleanup (2026-11-18; source on `main`)
+## 1.3.2 — Optional bounded background refresh and documentation cleanup (2026-11-18; [GitHub release published](https://github.com/stephdust/my-modbus-rtu-ip-gateway/releases/tag/v1.3.2))
 
 - Added opt-in TCP Client stale-while-revalidate cache: validated read results can be served up to a configured maximum age while TCP refreshes run in the background without unsolicited RTU replies.
 - Added a configurable RTU response deadline to suppress late replies; cache/refresh diagnostic counters and FR/EN Web settings are included.
