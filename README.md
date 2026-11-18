@@ -68,6 +68,11 @@ See [Cache behavior and configuration](docs/CACHE.md) for details. The cache opt
 
 ![Both gateway topologies: TCP Client / RTU Slave and TCP Server / RTU Master](docs/assets/system-architecture.png)
 
+
+### Persistent TCP reconnect (source v1.2.8)
+
+In **TCP Client** mode with **Persistent TCP connection** enabled, if a reused socket fails while sending a request, disconnects before a complete response, or times out waiting for a response, the gateway closes that socket and retries **one time** with a new TCP connection for Modbus function **03** or **04** only. The log shows `TCP RETRY`. Writes are **never automatically replayed**, to avoid duplicate side effects. Reconnection is request-driven, not a background keepalive. This change is on `main` and still needs compilation and hardware testing; the v1.2.7 release is unchanged.
+
 ## Web interface (v1.2.7)
 
 ### Captures réelles de l'interface Web v1.2.7 — quatre modes
