@@ -798,8 +798,14 @@ class ModbusGateway : public Component {
       if (rx_.size() < n) return;
       std::vector<uint8_t> frame(rx_.begin(), rx_.begin()+n);
       uint32_t rtu_request_span_us = 0;
+      // Use the captured last-byte time, not the later parsing time: a
+      // foreground TCP transaction may have left this request queued in
+      // the UART buffer. Starting a fresh reply deadline at parse time
+      // would incorrectly allow a reply to an already-expired request.
+      uint32_t rtu_request_received_us = micros();
       if (rx_timestamps_us_.size() >= n) {
         rtu_request_span_us = rx_timestamps_us_[n - 1] - rx_timestamps_us_[0];
+        rtu_request_received_us = rx_timestamps_us_[n - 1];
         rx_timestamps_us_.erase(rx_timestamps_us_.begin(), rx_timestamps_us_.begin() + n);
       } else {
         rx_timestamps_us_.clear();
@@ -820,7 +826,7 @@ class ModbusGateway : public Component {
       }
       std::vector<uint8_t> pdu(frame.begin()+1, frame.end()-2);
       const uint8_t unit_id = frame[0];
-      const uint32_t end_to_end_started_us = micros();
+      const uint32_t end_to_end_started_us = rtu_request_received_us;
       uint16_t cache_start = 0;
       uint16_t cache_quantity = 0;
       const bool cacheable_read = is_cacheable_read_request_(pdu, cache_start, cache_quantity);
