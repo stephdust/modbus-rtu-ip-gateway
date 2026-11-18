@@ -61,7 +61,8 @@ ota:
   - platform: esphome
 
 external_components:
-  - source: github://stephdust/my-modbus-rtu-ip-gateway
+  - source: github://stephdust/my-modbus-rtu-ip-gateway@main
+    refresh: 0s
 #  - source:
 #      type: local
 #      path: components
