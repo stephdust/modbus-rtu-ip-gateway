@@ -347,7 +347,7 @@ class ModbusGateway : public Component {
       const uint32_t fresh_ttl = cache_ttl_adaptive_ ? entry.ttl_ms : cache_ttl_ms_;
       const bool can_serve_stale = direction == CACHE_DIRECTION_CLIENT &&
           tcp_mode_ == "CLIENT" && transport_ == "TCP" &&
-          cache_client_enabled_ && cache_swr_enabled_;
+          tcp_persistent_ && cache_client_enabled_ && cache_swr_enabled_;
       if (gateway_policy::classify_cache_age(
               now, entry.stored_at_ms, fresh_ttl, cache_swr_max_age_ms_,
               can_serve_stale) == gateway_policy::CacheAge::Unavailable) {
@@ -368,7 +368,8 @@ class ModbusGateway : public Component {
     if (stale_out) *stale_out = gateway_policy::classify_cache_age(
         now, freshest->stored_at_ms, fresh_ttl, cache_swr_max_age_ms_,
         direction == CACHE_DIRECTION_CLIENT && tcp_mode_ == "CLIENT" &&
-        transport_ == "TCP" && cache_client_enabled_ && cache_swr_enabled_) ==
+        transport_ == "TCP" && tcp_persistent_ &&
+        cache_client_enabled_ && cache_swr_enabled_) ==
         gateway_policy::CacheAge::Stale;
     const uint32_t elapsed = uint32_t(now - freshest->last_request_ms);
     if (cache_ttl_adaptive_ && freshest->last_request_ms != 0 &&
@@ -395,8 +396,8 @@ class ModbusGateway : public Component {
     ResponseCacheEntry *target = gateway_policy::cache_store_slot(
         response_cache_, RESPONSE_CACHE_CAPACITY, now, direction, unit_id,
         request_pdu[0], start_address, quantity, cache_ttl_adaptive_, cache_ttl_ms_,
-        cache_client_enabled_ && cache_swr_enabled_ && tcp_mode_ == "CLIENT" &&
-        transport_ == "TCP" ? cache_swr_max_age_ms_ : 0U);
+        cache_client_enabled_ && cache_swr_enabled_ && tcp_persistent_ &&
+        tcp_mode_ == "CLIENT" && transport_ == "TCP" ? cache_swr_max_age_ms_ : 0U);
     if (!target) return;
 
     const bool same_key = target->direction == direction && target->unit_id == unit_id &&
@@ -533,7 +534,7 @@ class ModbusGateway : public Component {
     const uint32_t now = millis();
     uint32_t count = 0, stale_count = 0, min_ttl = 0, max_ttl = 0;
     const bool allow_stale = client_mode && enabled && cache_swr_enabled_ &&
-                             transport_ == "TCP";
+                             tcp_persistent_ && transport_ == "TCP";
     if (enabled) {
       for (const auto &entry : response_cache_) {
         if (!entry.valid || entry.direction != direction) continue;
@@ -747,7 +748,7 @@ class ModbusGateway : public Component {
 
   bool swr_client_mode_() const {
     return tcp_mode_ == "CLIENT" && transport_ == "TCP" &&
-           cache_client_enabled_ && cache_swr_enabled_;
+           tcp_persistent_ && cache_client_enabled_ && cache_swr_enabled_;
   }
 
   // The screen may have abandoned the previous RTU request while TCP/RS485
@@ -945,7 +946,10 @@ class ModbusGateway : public Component {
       ESP_LOGI("modbus_gateway", "TCP client: Wi-Fi=%s local IP=%s; connecting to %s:%u (persistent=%s)",
                wifi_connected ? "connected" : "not connected", local_ip.c_str(), cfg_host_.c_str(),
                unsigned(cfg_port_), tcp_persistent_ ? "yes" : "no");
-      if (!client_.connect(cfg_host_.c_str(), cfg_port_)) {
+      // A background cache refresh must not block the UART/Web task for
+      // the full foreground network timeout after a Wi-Fi/TCP outage.
+      if (!client_.connect(cfg_host_.c_str(), cfg_port_,
+                           background_refresh ? 250 : int32_t(tcp_timeout_ms_))) {
         client_txn_.connect_us = micros() - connect_started_us;
         add_event_("TCP ERROR", String("Connection to ") + target + " failed after " +
                    String(client_txn_.connect_us / 1000) + " ms (connect() returned false).");
@@ -2416,12 +2420,13 @@ function crc16Modbus(bytes){let crc=0xFFFF;for(const b of bytes){crc^=b;for(let 
 function toggleHostField(){const isServer=document.querySelector('select[name="mode"]').value==='SERVER';const isTcp=document.querySelector('select[name="transport"]').value==='TCP';document.getElementById('host_field').style.display=isServer?'none':'block';document.getElementById('host_input').required=!isServer;const persistentField=document.getElementById('persistent_tcp_field');const persistentInput=document.querySelector('input[name="persistent"]');const showPersistent=!isServer&&isTcp;persistentField.style.display=showPersistent?'block':'none';persistentInput.disabled=!showPersistent;}
 document.querySelector('select[name="mode"]').addEventListener('change',toggleHostField);
 document.querySelector('select[name="transport"]').addEventListener('change',toggleHostField);toggleHostField();
-function toggleCacheFields(){const isClient=document.querySelector('select[name="mode"]').value==='CLIENT';document.getElementById('cache_client_field').style.display=isClient?'block':'none';document.getElementById('cache_server_field').style.display=isClient?'none':'block';const activeCache=document.querySelector('input[name="'+(isClient?'cache_client':'cache_server')+'"]');document.getElementById('cache_ttl_field').style.display=activeCache.checked?'block':'none';document.getElementById('cache_fixed_ttl').style.display=document.querySelector('select[name="cache_ttl_mode"]').value==='fixed'?'block':'none';const swr=document.querySelector('input[name="cache_swr"]');const swrVisible=isClient&&activeCache.checked&&document.querySelector('select[name="transport"]').value==='TCP';document.getElementById('cache_swr_field').style.display=swrVisible?'block':'none';swr.disabled=!swrVisible;document.getElementById('cache_swr_options').style.display=swr.checked?'block':'none';}
+function toggleCacheFields(){const isClient=document.querySelector('select[name="mode"]').value==='CLIENT';document.getElementById('cache_client_field').style.display=isClient?'block':'none';document.getElementById('cache_server_field').style.display=isClient?'none':'block';const activeCache=document.querySelector('input[name="'+(isClient?'cache_client':'cache_server')+'"]');document.getElementById('cache_ttl_field').style.display=activeCache.checked?'block':'none';document.getElementById('cache_fixed_ttl').style.display=document.querySelector('select[name="cache_ttl_mode"]').value==='fixed'?'block':'none';const swr=document.querySelector('input[name="cache_swr"]');const swrVisible=isClient&&activeCache.checked&&document.querySelector('select[name="transport"]').value==='TCP'&&document.querySelector('input[name="persistent"]').checked;document.getElementById('cache_swr_field').style.display=swrVisible?'block':'none';swr.disabled=!swrVisible;document.getElementById('cache_swr_options').style.display=swr.checked?'block':'none';}
 document.querySelector('select[name="mode"]').addEventListener('change',toggleCacheFields);
 document.querySelector('input[name="cache_client"]').addEventListener('change',toggleCacheFields);
 document.querySelector('input[name="cache_server"]').addEventListener('change',toggleCacheFields);
 document.querySelector('select[name="cache_ttl_mode"]').addEventListener('change',toggleCacheFields);
 document.querySelector('input[name="cache_swr"]').addEventListener('change',toggleCacheFields);
+document.querySelector('input[name="persistent"]').addEventListener('change',toggleCacheFields);
 document.querySelector('select[name="transport"]').addEventListener('change',toggleCacheFields);
 toggleCacheFields();
 function escapeHtml(value){return String(value).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
@@ -2699,7 +2704,8 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
     }
     if (tcp_mode_ == "CLIENT") {
       cache_swr_enabled_ = web_.hasArg("cache_swr") && web_.arg("cache_swr") == "1" &&
-                           cache_client_enabled_ && transport_ == "TCP";
+                           cache_client_enabled_ && tcp_persistent_ &&
+                           transport_ == "TCP";
     }
     if (web_.hasArg("cache_swr_max")) {
       int max_age = web_.arg("cache_swr_max").toInt();
