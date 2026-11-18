@@ -1,3 +1,11 @@
+## 1.3.2 — Optional bounded background refresh and documentation cleanup (2026-11-18; source on `main`)
+
+- Added opt-in TCP Client stale-while-revalidate cache: validated read results can be served up to a configured maximum age while TCP refreshes run in the background without unsolicited RTU replies.
+- Added a configurable RTU response deadline to suppress late replies; cache/refresh diagnostic counters and FR/EN Web settings are included.
+- Default gateway behavior remains unchanged until the user enables the new cache mode. Build and physical-display validation of this feature are still pending.
+- Updated README and guides: **ESPHome port 8080 uses the stock local Web UI, with no injected JavaScript**; the `Interface web` text sensor exposes the port-80 URL derived from Wi-Fi IP.
+- Corrected outdated version/validation statements and the documented scope of the Modbus **Silent** error policy; preserved historical v1.2.7 screenshots.
+
 ## 1.3.0 — Stable baseline (2026-11-18; source on `main`)
 
 - Consolidate the Modbus RTU ↔ TCP/UDP gateway and bilingual web UI.
