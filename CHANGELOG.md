@@ -1,3 +1,7 @@
+## Unreleased — diagnostics improvements after v1.2.2 source bump
+
+- Added live active-cache occupancy (`0 / 64` when disabled) and effective TTL range to the Counters / Diagnostics Web panel, with a lightweight JSON status endpoint. Counts exclude expired entries and entries belonging to the inactive Client/Server direction. Firmware build and hardware validation pending.
+
 ## 1.2.2 — Fixed and adaptive cache TTL (2026-11-18; source on `main`, release publication pending)
 
 - Added a Fixed/Adaptive response-cache TTL selector in the Web UI for Client and Server modes over TCP/UDP.
