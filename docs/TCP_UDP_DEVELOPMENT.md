@@ -36,3 +36,6 @@ The header uses the RTU ↔ IP gateway artwork with caches on both sides. The fo
 La branche a été compilée et installée sur ESP32-S3. Selon les essais communiqués par l'utilisateur, les **quatre modes TCP/UDP Client/Serveur fonctionnent**, y compris les lectures FC03/04, écritures FC06/16, ID RTU automatique/manuel et cache en UDP. Les tests de robustesse restent à effectuer. La version TCP/UDP v1.2.1 a été publiée. Le code v1.2.6 sur `main` ajoute le TTL adaptatif, qui reste à compiler et valider.
 
 Dans l'interface, **Connexion TCP persistante** est affichée uniquement en **TCP Client** et masquée en TCP Serveur, UDP Client et UDP Serveur ; le changement est immédiat. Le réglage TCP enregistré est conservé lors du passage en UDP. Les quatre petits logos sont harmonisés avec le logo principal, et le pictogramme Modbus IP indique désormais **TCP/UDP**.
+
+
+> **Web UI v1.2.7:** The Mode selector is transport-neutral: **Client (RTU → IP)** or **Server (IP → RTU)**. Choose **TCP** or **UDP** independently in Transport. Earlier v1.2.6 screenshots remain historical references and may display older labels.
