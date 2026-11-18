@@ -153,6 +153,18 @@ class ModbusGateway : public Component {
   bool cache_server_enabled_{false};
   uint32_t cache_ttl_ms_{500};
   bool cache_ttl_adaptive_{false};
+  // Optional client TCP stale-while-revalidate mode: serve a bounded-age
+  // validated read immediately, refresh the TCP cache without an RTU reply.
+  bool cache_swr_enabled_{false};
+  uint32_t cache_swr_max_age_ms_{10000};
+  uint32_t rtu_reply_window_ms_{500};
+  uint32_t last_background_refresh_ms_{0};
+  uint32_t background_refresh_started_{0};
+  uint32_t background_refresh_succeeded_{0};
+  uint32_t background_refresh_failed_{0};
+  uint32_t rtu_late_reply_dropped_{0};
+  uint32_t cache_fresh_hits_{0};
+  uint32_t cache_stale_hits_{0};
   bool manual_rtu_id_{false};
   uint8_t configured_rtu_id_{1};
   ::Preferences prefs_;
@@ -206,6 +218,7 @@ class ModbusGateway : public Component {
     ByteTiming response_timing;
     bool reused_connection{false};
     bool cacheable_read{false};
+    bool background_refresh{false};
     bool reconnect_retry_used{false};  // Only one replay for FC03/FC04 on reused TCP sockets.
   };
   ClientTransaction client_txn_;
@@ -316,7 +329,9 @@ class ModbusGateway : public Component {
 
   bool cache_lookup_(uint8_t direction, uint8_t unit_id,
                      const std::vector<uint8_t> &request_pdu,
-                     std::vector<uint8_t> &response_pdu, uint32_t &age_ms) {
+                     std::vector<uint8_t> &response_pdu, uint32_t &age_ms,
+                     bool *stale_out = nullptr) {
+    if (stale_out) *stale_out = false;
     uint16_t start_address = 0;
     uint16_t quantity = 0;
     if (!is_cacheable_read_request_(request_pdu, start_address, quantity)) return false;
@@ -327,10 +342,15 @@ class ModbusGateway : public Component {
       if (entry.direction != direction || entry.unit_id != unit_id ||
           entry.function_code != request_pdu[0] || entry.start_address != start_address ||
           entry.quantity != quantity) continue;
-      // Check ORIGINAL lifetime before any adaptive TTL updates.
-      if (gateway_policy::cache_expired(
-              now, entry.stored_at_ms,
-              cache_ttl_adaptive_ ? entry.ttl_ms : cache_ttl_ms_)) {
+      // SWR does not destroy an expired fresh entry until its explicitly
+      // configured absolute max age; a stale hit never renews that age.
+      const uint32_t fresh_ttl = cache_ttl_adaptive_ ? entry.ttl_ms : cache_ttl_ms_;
+      const bool can_serve_stale = direction == CACHE_DIRECTION_CLIENT &&
+          tcp_mode_ == "CLIENT" && transport_ == "TCP" &&
+          cache_client_enabled_ && cache_swr_enabled_;
+      if (gateway_policy::classify_cache_age(
+              now, entry.stored_at_ms, fresh_ttl, cache_swr_max_age_ms_,
+              can_serve_stale) == gateway_policy::CacheAge::Unavailable) {
         entry.valid = false;
         continue;
       }
@@ -344,6 +364,12 @@ class ModbusGateway : public Component {
       }
     }
     if (!freshest) return false;
+    const uint32_t fresh_ttl = cache_ttl_adaptive_ ? freshest->ttl_ms : cache_ttl_ms_;
+    if (stale_out) *stale_out = gateway_policy::classify_cache_age(
+        now, freshest->stored_at_ms, fresh_ttl, cache_swr_max_age_ms_,
+        direction == CACHE_DIRECTION_CLIENT && tcp_mode_ == "CLIENT" &&
+        transport_ == "TCP" && cache_client_enabled_ && cache_swr_enabled_) ==
+        gateway_policy::CacheAge::Stale;
     const uint32_t elapsed = uint32_t(now - freshest->last_request_ms);
     if (cache_ttl_adaptive_ && freshest->last_request_ms != 0 &&
         elapsed >= 50U && elapsed <= 60000U) {
@@ -368,7 +394,9 @@ class ModbusGateway : public Component {
     const uint32_t now = millis();
     ResponseCacheEntry *target = gateway_policy::cache_store_slot(
         response_cache_, RESPONSE_CACHE_CAPACITY, now, direction, unit_id,
-        request_pdu[0], start_address, quantity, cache_ttl_adaptive_, cache_ttl_ms_);
+        request_pdu[0], start_address, quantity, cache_ttl_adaptive_, cache_ttl_ms_,
+        cache_client_enabled_ && cache_swr_enabled_ && tcp_mode_ == "CLIENT" &&
+        transport_ == "TCP" ? cache_swr_max_age_ms_ : 0U);
     if (!target) return;
 
     const bool same_key = target->direction == direction && target->unit_id == unit_id &&
@@ -615,7 +643,14 @@ class ModbusGateway : public Component {
     cache_server_enabled_ = prefs_.getBool("cachesrv", cache_server_enabled_);
     cache_ttl_ms_ = prefs_.getUInt("cachettl", cache_ttl_ms_);
     cache_ttl_adaptive_ = prefs_.getBool("cacheauto", false);
+    cache_swr_enabled_ = prefs_.getBool("cacheswr", false);
+    cache_swr_max_age_ms_ = prefs_.getUInt("swrmaxage", 10000);
+    rtu_reply_window_ms_ = prefs_.getUInt("rtuwindow", 500);
     if (cache_ttl_ms_ < 50 || cache_ttl_ms_ > 10000) cache_ttl_ms_ = 500;
+    if (cache_swr_max_age_ms_ < 1000 || cache_swr_max_age_ms_ > 30000)
+      cache_swr_max_age_ms_ = 10000;
+    if (rtu_reply_window_ms_ < 250 || rtu_reply_window_ms_ > 2000)
+      rtu_reply_window_ms_ = 500;
     tx_gpio_ = prefs_.getInt("tx", tx_gpio_);
     rx_gpio_ = prefs_.getInt("rx", rx_gpio_);
     de_re_gpio_ = prefs_.getInt("de", de_re_gpio_);
@@ -781,18 +816,21 @@ class ModbusGateway : public Component {
     client_txn_.response_timing = ByteTiming{};
     client_txn_.reused_connection = false;
     client_txn_.cacheable_read = false;
+    client_txn_.background_refresh = false;
     client_txn_.reconnect_retry_used = false;
   }
 
   void start_client_transaction_(uint8_t unit_id, const std::vector<uint8_t> &pdu,
                                  uint32_t end_to_end_started_us, bool cacheable_read,
-                                 bool reconnect_retry = false) {
+                                 bool reconnect_retry = false,
+                                 bool background_refresh = false) {
     if (pdu.empty() || pdu.size() > 253) return;
     reset_client_transaction_();
     client_txn_.unit_id = unit_id;
     client_txn_.request_pdu.assign(pdu.begin(), pdu.end());
     client_txn_.end_to_end_started_us = end_to_end_started_us;
     client_txn_.cacheable_read = cacheable_read;
+    client_txn_.background_refresh = background_refresh;
     client_txn_.reconnect_retry_used = reconnect_retry;
 
     if (transport_ == "UDP") {
@@ -934,11 +972,13 @@ class ModbusGateway : public Component {
     const uint8_t unit_id = client_txn_.unit_id;
     const uint32_t started_us = client_txn_.end_to_end_started_us;
     const bool cacheable_read = client_txn_.cacheable_read;
+    const bool background_refresh = client_txn_.background_refresh;
     const std::vector<uint8_t> request_pdu = client_txn_.request_pdu;
     add_event_("TCP RETRY", String("Reconnecting once for read FC") + String(function) +
                " after a reused connection failed: " + reason);
     client_.stop();
-    start_client_transaction_(unit_id, request_pdu, started_us, cacheable_read, true);
+    start_client_transaction_(unit_id, request_pdu, started_us, cacheable_read,
+                              true, background_refresh);
     return true;
   }
 
