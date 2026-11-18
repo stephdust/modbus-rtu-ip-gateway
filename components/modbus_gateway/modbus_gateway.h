@@ -2077,7 +2077,7 @@ main>.bottom-actions>button{height:44px!important;min-height:44px!important;max-
 
 <div class="manual-frame-panel"><h3 data-fr="Envoi manuel d’une trame Modbus IP" data-en="Manual Modbus IP frame transmission">Envoi manuel d’une trame Modbus IP</h3><label for="rtuFrame">Trame RTU à envoyer (hexadécimal, avec adresse et CRC, ex. 0B 03 00 00 00 01 84 A0)</label>
 <input id="rtuFrame" placeholder="0B 03 00 00 00 01 ... CRC" autocomplete="off">
-<button type="button" onclick="sendManual()" style="margin-top:10px">Envoyer au serveur TCP</button></div>
+<button type="button" onclick="sendManual()" style="margin-top:10px">Envoyer au serveur TCP</button>
 <p class="muted">Réponse du serveur Modbus IP :</p><pre id="manualResponse">Aucune requête manuelle</pre></div>
 <div class="frame-monitor-panel"><h3 data-fr="Écoute et capture des trames RTU / IP" data-en="RTU / IP frame monitoring and capture">Écoute et capture des trames RTU / IP</h3>
 <div class="frame-actions"><button id="listenBtn" type="button" onclick="toggleListen()">Arrêter l’écoute RTU</button><button type="button" onclick="clearFrames()">Vider l’affichage des trames</button><a class="button-link" href="/frames.txt">Exporter la capture des trames (.txt)</a><span id="listenState">Écoute RTU active</span></div>
