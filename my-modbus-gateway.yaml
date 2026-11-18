@@ -35,6 +35,22 @@ web_server:
   # Optional add-on: make the "Interface web" URL clickable.
   # Keep the default ESPHome UI script; js_include is loaded alongside it.
   js_include: web-link-addon.js
+  sorting_groups:
+    - id: grp_network
+      name: "Réseau et Wi-Fi"
+      sorting_weight: 10
+    - id: grp_gateway
+      name: "Passerelle Modbus"
+      sorting_weight: 20
+    - id: grp_system
+      name: "Système ESP32"
+      sorting_weight: 30
+    - id: grp_memory
+      name: "Mémoire et performances"
+      sorting_weight: 40
+    - id: grp_maintenance
+      name: "Maintenance"
+      sorting_weight: 50
 
 api:
   encryption:
@@ -55,63 +71,84 @@ modbus_gateway:
   id: gateway
 
 text_sensor:
+  # Réseau et Wi-Fi
   - platform: wifi_info
     ip_address:
       name: "Adresse IP"
       id: gateway_ip
       icon: mdi:ip-network
-
+      web_server:
+        sorting_group_id: grp_network
+        sorting_weight: 10
     ssid:
       name: "WiFi connecté"
       icon: mdi:wifi
-
+      web_server:
+        sorting_group_id: grp_network
+        sorting_weight: 20
     mac_address:
       name: "Adresse MAC WiFi"
       icon: mdi:network
+      web_server:
+        sorting_group_id: grp_network
+        sorting_weight: 30
 
-  - platform: version
-    name: "Version ESPHome"
-    icon: mdi:information-outline
-
-  - platform: uptime
-    name: "Temps de fonctionnement"
-    icon: mdi:clock-outline
-
+  # Passerelle Modbus : accès à l'interface sur le port 80
   - platform: template
     name: "Interface web"
     id: gateway_web_url
     icon: mdi:web
     update_interval: 30s
+    web_server:
+      sorting_group_id: grp_gateway
+      sorting_weight: 10
     lambda: |-
       if (id(gateway_ip).has_state()) {
         return std::string("http://") + id(gateway_ip).state + "/";
       }
       return {};
 
+  # Système ESP32
+  - platform: version
+    name: "Version ESPHome"
+    icon: mdi:information-outline
+    web_server:
+      sorting_group_id: grp_system
+      sorting_weight: 10
+
+  - platform: uptime
+    name: "Temps de fonctionnement"
+    icon: mdi:clock-outline
+    web_server:
+      sorting_group_id: grp_system
+      sorting_weight: 20
+
   - platform: debug
     device:
       name: "Informations matérielles"
+      web_server:
+        sorting_group_id: grp_system
+        sorting_weight: 30
     reset_reason:
       name: "Cause du dernier redémarrage"
+      web_server:
+        sorting_group_id: grp_system
+        sorting_weight: 40
 
 debug:
   update_interval: 30s
 
 sensor:
-    # Température interne ESP32-S3
-  - platform: internal_temperature
-    name: "Température interne ESP32"
-    update_interval: 30s
-    entity_category: diagnostic
-
-  # Puissance du signal WiFi en dBm
+  # Réseau et Wi-Fi
   - platform: wifi_signal
     name: "Signal WiFi"
     id: wifi_signal_db
     update_interval: 30s
     entity_category: diagnostic
+    web_server:
+      sorting_group_id: grp_network
+      sorting_weight: 40
 
-  # Qualité WiFi estimée en %
   - platform: copy
     source_id: wifi_signal_db
     name: "Qualité WiFi"
@@ -120,33 +157,68 @@ sensor:
           return clamp(2.0f * (x + 100.0f), 0.0f, 100.0f);
     unit_of_measurement: "%"
     entity_category: diagnostic
+    web_server:
+      sorting_group_id: grp_network
+      sorting_weight: 50
 
-  # Uptime en secondes
+  # Système ESP32
+  - platform: internal_temperature
+    name: "Température interne ESP32"
+    update_interval: 30s
+    entity_category: diagnostic
+    web_server:
+      sorting_group_id: grp_system
+      sorting_weight: 50
+
   - platform: uptime
     name: "Uptime secondes"
     update_interval: 60s
     entity_category: diagnostic
+    web_server:
+      sorting_group_id: grp_system
+      sorting_weight: 60
 
-  # Informations processeur et mémoire
+  # Mémoire et performances
   - platform: debug
     free:
       name: "Mémoire RAM disponible"
+      web_server:
+        sorting_group_id: grp_memory
+        sorting_weight: 10
     block:
       name: "Bloc RAM disponible"
+      web_server:
+        sorting_group_id: grp_memory
+        sorting_weight: 20
     psram:
       name: "PSRAM disponible"
+      web_server:
+        sorting_group_id: grp_memory
+        sorting_weight: 30
     cpu_frequency:
       name: "Fréquence CPU"
+      web_server:
+        sorting_group_id: grp_memory
+        sorting_weight: 40
     loop_time:
       name: "Temps de boucle ESP32"
+      web_server:
+        sorting_group_id: grp_memory
+        sorting_weight: 50
 
 binary_sensor:
   - platform: status
     name: "État de connexion ESPHome"
     entity_category: diagnostic
+    web_server:
+      sorting_group_id: grp_network
+      sorting_weight: 60
 
 button:
   - platform: restart
     name: "Redémarrer la passerelle"
     icon: mdi:restart
     entity_category: diagnostic
+    web_server:
+      sorting_group_id: grp_maintenance
+      sorting_weight: 10
