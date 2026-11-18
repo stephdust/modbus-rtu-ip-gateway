@@ -2052,9 +2052,9 @@ main>.bottom-actions>button{height:44px!important;min-height:44px!important;max-
     s += R"HTML(> Activer le cache en mode Serveur IP (IP → RTU)</label></div>
 <div id="cache_ttl_field"><label>Gestion du TTL</label><select name="cache_ttl_mode" form="cfg"><option value="fixed")HTML";
     if (!cache_ttl_adaptive_) s += " selected";
-    s += R"HTML(>TTL fixe / Fixed TTL</option><option value="adaptive")HTML";
+    s += R"HTML(>TTL fixe</option><option value="adaptive")HTML";
     if (cache_ttl_adaptive_) s += " selected";
-    s += R"HTML(>TTL adaptatif / Adaptive TTL</option></select><div id="cache_fixed_ttl"><label>Durée de validité du cache (ms)</label><input name="cache_ttl" form="cfg" type="number" min="50" max="10000" value=")HTML";
+    s += R"HTML(>TTL adaptatif</option></select><div id="cache_fixed_ttl"><label>Durée de validité du cache (ms)</label><input name="cache_ttl" form="cfg" type="number" min="50" max="10000" value=")HTML";
     s += String(cache_ttl_ms_);
     s += R"HTML("></div><p class="muted">Mode adaptatif : TTL calculé par requête à partir de la période observée (80 %, entre 50 et 10 000 ms). Valeur initiale : TTL fixe.</p></div></div>
 <div class="muted tcp-note">Le cache concerne uniquement les lectures Modbus (fonctions 01 à 04). L’option affichée correspond au mode Client/Serveur sélectionné ; le réglage de l’autre mode est conservé. Les écritures réussies invalident les réponses mémorisées pour l’Unit ID concerné. 64 entrées maximum.</div>
@@ -2110,6 +2110,15 @@ main>.bottom-actions>button{height:44px!important;min-height:44px!important;max-
 <script>
 let currentLanguage='fr';
 const translations={
+'Gestion du TTL':'TTL management','TTL fixe':'Fixed TTL','TTL adaptatif':'Adaptive TTL',
+'Mode adaptatif : TTL calculé par requête à partir de la période observée (80 %, entre 50 et 10 000 ms). Valeur initiale : TTL fixe.':'Adaptive mode: TTL calculated per request from the observed polling interval (80%, between 50 and 10,000 ms). Initial value: fixed TTL.',
+'État et connexions':'Status and connections','Adresse IP':'IP address','Connecté depuis':'Connected for','Passerelle :':'Gateway:','Serveur IP :':'IP server:','Clients IP :':'IP clients:',
+'Durée de connexion en temps écoulé. Les connexions UDP ne sont pas persistantes.':'Connection duration is elapsed time. UDP has no persistent connections.',
+'Compteurs / Diagnostics':'Counters / diagnostics','Cache (entrées)':'Cache (entries)','TTL effectif':'Effective TTL',
+'Nombre d’entrées correspondantes parmi les 64 dernières lignes du journal ; ce ne sont pas des compteurs cumulés.':'Matching entries in the most recent 64 log lines; these are not lifetime counters.',
+'Cache : nombre d’entrées valides du mode actif (0 si désactivé). TTL : plage effective des entrées en cache ; elle varie en mode adaptatif.':'Cache: valid entries for the active mode (0 when disabled). TTL: effective range for cached entries; varies in adaptive mode.',
+'Envoi manuel d’une trame Modbus IP':'Manual Modbus IP frame transmission','Écoute et capture des trames RTU / IP':'RTU / IP frame monitoring and capture','Actualiser':'Refresh',
+'Reconnecting once for read FC':'Reconnexion et nouvelle tentative unique pour lecture FC',' after a reused connection failed: ':' après échec de la connexion réutilisée : ',
 'Mode':'Mode','Client (RTU vers IP)':'Client (RTU to IP)','Serveur (IP vers RTU)':'Server (IP to RTU)',
 'Connexion TCP persistante':'Persistent TCP connection','Garde la connexion ouverte entre les requêtes RTU pour réduire la latence (mode Client TCP uniquement).':'Keep the connection open between RTU requests to reduce latency (TCP Client mode only).','Redémarrer la passerelle':'Restart gateway','Redémarrer':'Restart','Redémarre l’ESP32 sans modifier les paramètres enregistrés.':'Restart the ESP32 without changing saved settings.',
 'Adresse IP du serveur Modbus':'Modbus server IP address','Port Modbus IP':'Modbus IP port','Timeout réseau (secondes)':'Network timeout (seconds)','Comportement en cas de timeout distant':'Behavior when the remote device times out','Standard : envoyer une exception Modbus':'Standard: send a Modbus exception','Silencieux : ne pas répondre':'Silent: do not reply','S’applique aux modes Client et Serveur. En mode silencieux, seule l’absence de réponse distante déclenche le silence ; les erreurs de trame CRC restent signalées.':'Applies to both TCP modes. Silent mode is used only when the remote device does not respond; CRC frame errors are still reported.',
@@ -2120,7 +2129,7 @@ const translations={
 'Identifiant Modbus RTU':'Modbus RTU device ID','Automatique (adresse reçue)':'Automatic (received address)','Manuel':'Manual','ID RTU manuel (1–247)':'Manual RTU ID (1–247)',
 'Enregistrer / appliquer':'Save / apply','Enregistrement global':'Apply all settings','Les paramètres des sections 1, 2 et 3 seront enregistrés ensemble.':'Settings in sections 1, 2 and 3 will be saved together.','-1 = sélection automatique de la broche. Les paramètres sont enregistrés en mémoire. Toute modification des GPIO redémarre l’ESP32.':'-1 = automatic pin selection. Settings are stored in memory. Any GPIO change restarts the ESP32.',
 'Paramètres Modbus RTU':'Modbus RTU settings','Configuration':'Configuration','Debug des trames':'Frame diagnostics',
-'RTU RX/TX et IP TCP/UDP TX/RX · rafraîchissement automatique toutes les 1,5 s':'RTU RX/TX and TCP TX/RX · automatic refresh every 1.5 s',
+'RTU RX/TX et IP TCP/UDP TX/RX · rafraîchissement automatique toutes les 1,5 s':'RTU RX/TX and IP TCP/UDP TX/RX · automatic refresh every 1.5 s',
 'Les tentatives de connexion TCP et les erreurs réseau sont également affichées dans cette fenêtre.':'TCP connection attempts and network errors are also displayed in this window.',
 'Arrêter l’écoute RTU':'Stop RTU listening','Reprendre l’écoute RTU':'Resume RTU listening','Écoute RTU active':'RTU listening','Écoute RTU suspendue':'RTU listening paused','Erreur de commande':'Command error',
 'Trame RTU à envoyer (hexadécimal, avec adresse et CRC, ex. 0B 03 00 00 00 01 84 A0)':'RTU frame to send (hexadecimal, including address and CRC, e.g. 0B 03 00 00 00 01 84 A0)',
@@ -2175,8 +2184,9 @@ const translations={
 function tr(fr,en){return currentLanguage==='fr'?fr:en;}
 function translateValue(value){const pairs=Object.entries(translations).map(([fr,en])=>currentLanguage==='en'?[fr,en]:[en,fr]).sort((a,b)=>b[0].length-a[0].length);let out=value;for(const [from,to] of pairs){if(from)out=out.split(from).join(to);}return out;}
 function applyLanguage(){
+  document.querySelectorAll('[data-fr][data-en]').forEach(el=>{el.textContent=el.getAttribute(currentLanguage==='en'?'data-en':'data-fr');});
   const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
-  let node;while((node=walker.nextNode())){const parent=node.parentElement;if(!parent||['SCRIPT','STYLE'].includes(parent.tagName))continue;const raw=node.nodeValue;const trimmed=raw.trim();if(!trimmed)continue;const translated=translateValue(trimmed);if(translated!==trimmed)node.nodeValue=raw.replace(trimmed,translated);}
+  let node;while((node=walker.nextNode())){const parent=node.parentElement;if(!parent||['SCRIPT','STYLE'].includes(parent.tagName))continue;const raw=node.nodeValue;const trimmed=raw.trim();if(!trimmed)continue;if(parent.hasAttribute('data-fr')&&parent.hasAttribute('data-en'))continue;const translated=translateValue(trimmed);if(translated!==trimmed)node.nodeValue=raw.replace(trimmed,translated);}
   document.querySelectorAll('[placeholder]').forEach(el=>{el.placeholder=translateValue(el.placeholder);});
   document.getElementById('langBtn').textContent=currentLanguage==='fr'?'EN':'FR';
   document.getElementById('langBtn').title=currentLanguage==='fr'?'English':'Français';
