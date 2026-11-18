@@ -107,6 +107,35 @@ inline bool cache_expired(uint32_t now_ms, uint32_t stored_at_ms, uint32_t ttl_m
   return uint32_t(now_ms - stored_at_ms) >= ttl_ms;
 }
 
+// SWR never extends the lifetime indefinitely: the fixed maximum age is
+// measured from the LAST validated network response, not from cache hits.
+// An adaptive fresh TTL may exceed the configured stale limit, in which case
+// the larger fresh TTL wins until that entry actually becomes stale.
+enum class CacheAge : uint8_t { Unavailable, Fresh, Stale };
+inline CacheAge classify_cache_age(uint32_t now_ms, uint32_t stored_ms,
+                                    uint32_t fresh_ttl_ms,
+                                    uint32_t stale_max_age_ms,
+                                    bool allow_stale) {
+  const uint32_t retained_ms = allow_stale && stale_max_age_ms > fresh_ttl_ms
+      ? stale_max_age_ms : fresh_ttl_ms;
+  if (cache_expired(now_ms, stored_ms, retained_ms)) return CacheAge::Unavailable;
+  return cache_expired(now_ms, stored_ms, fresh_ttl_ms)
+      ? CacheAge::Stale : CacheAge::Fresh;
+}
+
+// Before transmitting a non-background RTU reply, ensure that its complete
+// on-wire duration (including direction switching guard) fits the configured
+// master-response window. Uses 64-bit arithmetic for long frames/slow baud.
+inline bool rtu_reply_fits_window(uint32_t elapsed_us, size_t frame_bytes,
+                                   uint32_t baud, uint8_t bits_per_char,
+                                   uint32_t window_ms, uint32_t guard_ms = 20U) {
+  if (!baud || !bits_per_char || !frame_bytes || !window_ms) return false;
+  const uint64_t tx_us = (uint64_t(frame_bytes) * bits_per_char * 1000000ULL
+                         + baud - 1U) / baud;
+  return uint64_t(elapsed_us) + tx_us + uint64_t(guard_ms) * 1000ULL
+         <= uint64_t(window_ms) * 1000ULL;
+}
+
 // Select the newest existing entry for a key BEFORE considering a free
 // slot. This also removes duplicate keys left by earlier firmware versions.
 // Entries hold only POD metadata, so this is allocation-free and host-testable.
@@ -115,7 +144,8 @@ inline Entry* cache_store_slot(Entry* entries, size_t count, uint32_t now_ms,
                                uint8_t direction, uint8_t unit_id,
                                uint8_t function_code, uint16_t address,
                                uint16_t quantity, bool adaptive,
-                               uint32_t fixed_ttl_ms) {
+                               uint32_t fixed_ttl_ms,
+                               uint32_t stale_retention_ms = 0U) {
   if (!entries) return nullptr;
   Entry* matching = nullptr;
   Entry* vacant = nullptr;
@@ -123,10 +153,14 @@ inline Entry* cache_store_slot(Entry* entries, size_t count, uint32_t now_ms,
   uint32_t oldest_age = 0;
   for (size_t i = 0; i < count; ++i) {
     Entry& entry = entries[i];
-    if (entry.valid && cache_expired(
-            now_ms, entry.stored_at_ms,
-            adaptive ? entry.ttl_ms : fixed_ttl_ms))
-      entry.valid = false;
+    if (entry.valid) {
+      const uint32_t fresh_ttl = adaptive ? entry.ttl_ms : fixed_ttl_ms;
+      const uint32_t retention = (entry.direction == direction &&
+          direction == 0U && stale_retention_ms > fresh_ttl)
+          ? stale_retention_ms : fresh_ttl;
+      if (cache_expired(now_ms, entry.stored_at_ms, retention))
+        entry.valid = false;
+    }
     if (entry.valid && entry.direction == direction && entry.unit_id == unit_id &&
         entry.function_code == function_code && entry.start_address == address &&
         entry.quantity == quantity) {
