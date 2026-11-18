@@ -32,10 +32,9 @@ captive_portal:
 web_server:
   port: 8080
   version: 3
-  # Load the official ESPHome v3 UI and our hyperlink add-on automatically.
-  # The browser downloads this module from GitHub via jsDelivr (CORS enabled).
-  # No local JavaScript file is required when compiling ESPHome.
-  js_url: https://cdn.jsdelivr.net/gh/stephdust/my-modbus-rtu-ip-gateway@main/web-link-entry.js
+  # Embed ESPHome's official v3 interface in firmware.
+  # No Internet connection or extra local JavaScript file is needed at runtime.
+  local: true
   sorting_groups:
     - id: grp_network
       name: "Réseau et Wi-Fi"
