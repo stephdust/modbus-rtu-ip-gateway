@@ -1,3 +1,8 @@
+## 1.2.6 — Manual frame response layout (2026-11-18; source on `main`, release publication pending)
+
+- Keep the manual Modbus IP response label and response output inside the same panel as the manual frame input and Send button.
+- Fix premature panel closing markup. No Modbus protocol behavior changes. Build and hardware validation pending.
+
 ## 1.2.5 — Clearer Web UI sections (2026-11-18; source on `main`, release publication pending)
 
 - Removed numeric prefixes from the four main Web section headings, in French and English.
