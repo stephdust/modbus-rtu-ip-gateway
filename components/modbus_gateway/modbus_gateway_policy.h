@@ -58,6 +58,51 @@ inline bool is_success(const uint8_t* request, size_t request_len,
   }
 }
 
+// An RTU reply MUST pass CRC, Unit ID, function and PDU shape validation
+// before the gateway may forward it or place it in the read cache.
+// TCP/UDP Modbus ADUs do not contain a Modbus RTU CRC.
+inline uint16_t crc16_rtu(const uint8_t* data, size_t size) {
+  uint16_t crc = 0xFFFFU;
+  if (!data) return 0U;
+  for (size_t i = 0; i < size; ++i) {
+    crc ^= data[i];
+    for (uint8_t bit = 0; bit < 8U; ++bit)
+      crc = (crc & 1U) ? uint16_t((crc >> 1U) ^ 0xA001U) : uint16_t(crc >> 1U);
+  }
+  return crc;
+}
+
+inline bool valid_rtu_crc(const uint8_t* frame, size_t size) {
+  if (!frame || size < 4U) return false;
+  const uint16_t found = uint16_t(frame[size - 2U]) |
+                         uint16_t(uint16_t(frame[size - 1U]) << 8U);
+  return found == crc16_rtu(frame, size - 2U);
+}
+
+enum class RtuReply : uint8_t { Invalid, Success, Exception };
+
+inline RtuReply classify_rtu_reply(uint8_t expected_unit,
+                                   const uint8_t* request_pdu, size_t request_size,
+                                   const uint8_t* frame, size_t frame_size) {
+  if (!request_pdu || !request_size || !frame || frame_size < 5U ||
+      frame[0] != expected_unit || !valid_rtu_crc(frame, frame_size))
+    return RtuReply::Invalid;
+  const uint8_t* response_pdu = frame + 1U;
+  const size_t response_size = frame_size - 3U;
+  if (is_success(request_pdu, request_size, response_pdu, response_size))
+    return RtuReply::Success;
+  if (is_exception(request_pdu, request_size, response_pdu, response_size))
+    return RtuReply::Exception;
+  return RtuReply::Invalid;
+}
+
+// An exception may be newly generated for an INVALID response in standard
+// mode, but the invalid raw RTU frame must never be forwarded or cached.
+inline bool forward_original_rtu_reply(RtuReply kind, bool silent) {
+  return kind == RtuReply::Success ||
+         (kind == RtuReply::Exception && !silent);
+}
+
 inline bool cache_expired(uint32_t now_ms, uint32_t stored_at_ms, uint32_t ttl_ms) {
   return uint32_t(now_ms - stored_at_ms) >= ttl_ms;
 }
