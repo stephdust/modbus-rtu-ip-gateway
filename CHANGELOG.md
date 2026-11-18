@@ -1,3 +1,9 @@
+## 1.2.7 — Transport-neutral mode selector (2026-11-18; source on `main`, release publication pending)
+
+- Clarified the Web UI: Mode now shows **Client (RTU → IP)** or **Server (IP → RTU)**, while Transport independently selects **TCP** or **UDP**.
+- Corrected English translations and cache descriptions to avoid calling UDP traffic TCP.
+- No protocol or transport logic changed. Compilation and hardware validation pending.
+
 ## 1.2.6 — Manual frame response layout (2026-11-18; source on `main`, release publication pending)
 
 - Keep the manual Modbus IP response label and response output inside the same panel as the manual frame input and Send button.
