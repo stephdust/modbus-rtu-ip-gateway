@@ -80,19 +80,19 @@ Connexion TCP persistante optionnelle, cache Client et TTL adaptatif, connexions
 
 **1. Configuration Modbus IP et bandeau**
 
-![v1.2.7 — TCP Client — RTU vers serveur TCP — Configuration Modbus IP et bandeau](docs/assets/v1.2.7-tcp-client-01.png)
+<a href="docs/assets/v1.2.7-tcp-client-01.png"><img src="docs/assets/v1.2.7-tcp-client-01.png" alt="v1.2.7 — TCP Client — RTU vers serveur TCP — Configuration Modbus IP et bandeau" width="700"></a>
 
 **2. Paramètres RTU, GPIO et état des connexions**
 
-![v1.2.7 — TCP Client — RTU vers serveur TCP — Paramètres RTU, GPIO et état des connexions](docs/assets/v1.2.7-tcp-client-02.png)
+<a href="docs/assets/v1.2.7-tcp-client-02.png"><img src="docs/assets/v1.2.7-tcp-client-02.png" alt="v1.2.7 — TCP Client — RTU vers serveur TCP — Paramètres RTU, GPIO et état des connexions" width="700"></a>
 
 **3. Compteurs / Diagnostics et envoi manuel**
 
-![v1.2.7 — TCP Client — RTU vers serveur TCP — Compteurs / Diagnostics et envoi manuel](docs/assets/v1.2.7-tcp-client-03.png)
+<a href="docs/assets/v1.2.7-tcp-client-03.png"><img src="docs/assets/v1.2.7-tcp-client-03.png" alt="v1.2.7 — TCP Client — RTU vers serveur TCP — Compteurs / Diagnostics et envoi manuel" width="700"></a>
 
 **4. Écoute des trames, journal et commandes**
 
-![v1.2.7 — TCP Client — RTU vers serveur TCP — Écoute des trames, journal et commandes](docs/assets/v1.2.7-tcp-client-04.png)
+<a href="docs/assets/v1.2.7-tcp-client-04.png"><img src="docs/assets/v1.2.7-tcp-client-04.png" alt="v1.2.7 — TCP Client — RTU vers serveur TCP — Écoute des trames, journal et commandes" width="700"></a>
 
 #### TCP Serveur — clients TCP vers RTU
 
@@ -100,19 +100,19 @@ Port d'écoute 502, clients TCP (jusqu'à quatre affichés), paramètres RTU et 
 
 **1. Configuration Modbus IP et bandeau**
 
-![v1.2.7 — TCP Serveur — clients TCP vers RTU — Configuration Modbus IP et bandeau](docs/assets/v1.2.7-tcp-serveur-01.png)
+<a href="docs/assets/v1.2.7-tcp-serveur-01.png"><img src="docs/assets/v1.2.7-tcp-serveur-01.png" alt="v1.2.7 — TCP Serveur — clients TCP vers RTU — Configuration Modbus IP et bandeau" width="700"></a>
 
 **2. Paramètres RTU, GPIO et état des connexions**
 
-![v1.2.7 — TCP Serveur — clients TCP vers RTU — Paramètres RTU, GPIO et état des connexions](docs/assets/v1.2.7-tcp-serveur-02.png)
+<a href="docs/assets/v1.2.7-tcp-serveur-02.png"><img src="docs/assets/v1.2.7-tcp-serveur-02.png" alt="v1.2.7 — TCP Serveur — clients TCP vers RTU — Paramètres RTU, GPIO et état des connexions" width="700"></a>
 
 **3. Compteurs / Diagnostics et envoi manuel**
 
-![v1.2.7 — TCP Serveur — clients TCP vers RTU — Compteurs / Diagnostics et envoi manuel](docs/assets/v1.2.7-tcp-serveur-03.png)
+<a href="docs/assets/v1.2.7-tcp-serveur-03.png"><img src="docs/assets/v1.2.7-tcp-serveur-03.png" alt="v1.2.7 — TCP Serveur — clients TCP vers RTU — Compteurs / Diagnostics et envoi manuel" width="700"></a>
 
 **4. Écoute des trames, journal et commandes**
 
-![v1.2.7 — TCP Serveur — clients TCP vers RTU — Écoute des trames, journal et commandes](docs/assets/v1.2.7-tcp-serveur-04.png)
+<a href="docs/assets/v1.2.7-tcp-serveur-04.png"><img src="docs/assets/v1.2.7-tcp-serveur-04.png" alt="v1.2.7 — TCP Serveur — clients TCP vers RTU — Écoute des trames, journal et commandes" width="700"></a>
 
 #### UDP Client — RTU vers serveur UDP
 
@@ -120,19 +120,19 @@ Destination UDP, cache Client adaptatif, compteur IP TX et journal des timeouts 
 
 **1. Configuration Modbus IP et bandeau**
 
-![v1.2.7 — UDP Client — RTU vers serveur UDP — Configuration Modbus IP et bandeau](docs/assets/v1.2.7-udp-client-01.png)
+<a href="docs/assets/v1.2.7-udp-client-01.png"><img src="docs/assets/v1.2.7-udp-client-01.png" alt="v1.2.7 — UDP Client — RTU vers serveur UDP — Configuration Modbus IP et bandeau" width="700"></a>
 
 **2. Paramètres RTU, GPIO et état des connexions**
 
-![v1.2.7 — UDP Client — RTU vers serveur UDP — Paramètres RTU, GPIO et état des connexions](docs/assets/v1.2.7-udp-client-02.png)
+<a href="docs/assets/v1.2.7-udp-client-02.png"><img src="docs/assets/v1.2.7-udp-client-02.png" alt="v1.2.7 — UDP Client — RTU vers serveur UDP — Paramètres RTU, GPIO et état des connexions" width="700"></a>
 
 **3. Compteurs / Diagnostics et envoi manuel**
 
-![v1.2.7 — UDP Client — RTU vers serveur UDP — Compteurs / Diagnostics et envoi manuel](docs/assets/v1.2.7-udp-client-03.png)
+<a href="docs/assets/v1.2.7-udp-client-03.png"><img src="docs/assets/v1.2.7-udp-client-03.png" alt="v1.2.7 — UDP Client — RTU vers serveur UDP — Compteurs / Diagnostics et envoi manuel" width="700"></a>
 
 **4. Écoute des trames, journal et commandes**
 
-![v1.2.7 — UDP Client — RTU vers serveur UDP — Écoute des trames, journal et commandes](docs/assets/v1.2.7-udp-client-04.png)
+<a href="docs/assets/v1.2.7-udp-client-04.png"><img src="docs/assets/v1.2.7-udp-client-04.png" alt="v1.2.7 — UDP Client — RTU vers serveur UDP — Écoute des trames, journal et commandes" width="700"></a>
 
 #### UDP Serveur — requêtes UDP vers RTU
 
@@ -140,19 +140,19 @@ Port UDP local 502, absence de session persistante, configuration RTU et journal
 
 **1. Configuration Modbus IP et bandeau**
 
-![v1.2.7 — UDP Serveur — requêtes UDP vers RTU — Configuration Modbus IP et bandeau](docs/assets/v1.2.7-udp-serveur-01.png)
+<a href="docs/assets/v1.2.7-udp-serveur-01.png"><img src="docs/assets/v1.2.7-udp-serveur-01.png" alt="v1.2.7 — UDP Serveur — requêtes UDP vers RTU — Configuration Modbus IP et bandeau" width="700"></a>
 
 **2. Paramètres RTU, GPIO et état des connexions**
 
-![v1.2.7 — UDP Serveur — requêtes UDP vers RTU — Paramètres RTU, GPIO et état des connexions](docs/assets/v1.2.7-udp-serveur-02.png)
+<a href="docs/assets/v1.2.7-udp-serveur-02.png"><img src="docs/assets/v1.2.7-udp-serveur-02.png" alt="v1.2.7 — UDP Serveur — requêtes UDP vers RTU — Paramètres RTU, GPIO et état des connexions" width="700"></a>
 
 **3. Compteurs / Diagnostics et envoi manuel**
 
-![v1.2.7 — UDP Serveur — requêtes UDP vers RTU — Compteurs / Diagnostics et envoi manuel](docs/assets/v1.2.7-udp-serveur-03.png)
+<a href="docs/assets/v1.2.7-udp-serveur-03.png"><img src="docs/assets/v1.2.7-udp-serveur-03.png" alt="v1.2.7 — UDP Serveur — requêtes UDP vers RTU — Compteurs / Diagnostics et envoi manuel" width="700"></a>
 
 **4. Écoute des trames, journal et commandes**
 
-![v1.2.7 — UDP Serveur — requêtes UDP vers RTU — Écoute des trames, journal et commandes](docs/assets/v1.2.7-udp-serveur-04.png)
+<a href="docs/assets/v1.2.7-udp-serveur-04.png"><img src="docs/assets/v1.2.7-udp-serveur-04.png" alt="v1.2.7 — UDP Serveur — requêtes UDP vers RTU — Écoute des trames, journal et commandes" width="700"></a>
 
 **Remarque :** sur certaines captures UDP, le bouton d'envoi manuel indique encore « Envoyer au serveur TCP » et les descriptions du journal mentionnent TCP. Ces libellés sont ceux de l'interface photographiée et seront à corriger séparément dans le firmware.
 
