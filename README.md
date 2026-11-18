@@ -10,9 +10,9 @@ A Wi-Fi Modbus gateway built with **ESPHome**, **ESP32-S3** and the **Arduino fr
 
 > **Reference hardware:** [Waveshare ESP32-S3-RS485-CAN](https://docs.waveshare.com/ESP32-S3-RS485-CAN). The project defaults match this board's RS-485 signals: TX GPIO17, RX GPIO18 and RS485 enable GPIO21. The project maintainer reports successful testing with this device, including four connected Modbus TCP clients.
 
-> **Version 1.3.0 on `main`:** supports **TCP Client, TCP Server, UDP Client and UDP Server**. The maintainer reports successful functional tests of the four modes; robustness testing remains pending. See [TCP/UDP development and UI behavior](docs/TCP_UDP_DEVELOPMENT.md).
+> **Version 1.3.1 source on `main`:** supports **TCP Client, TCP Server, UDP Client and UDP Server**. The maintainer reports successful functional tests of the four modes; robustness testing remains pending. See [TCP/UDP development and UI behavior](docs/TCP_UDP_DEVELOPMENT.md).
 
-### TCP/UDP web UI (v1.3.0)
+### TCP/UDP web UI (v1.3.1)
 
 The source interface labels the network section **Modbus IP**, offers a TCP/UDP selector, and includes four harmonized blue/cyan section thumbnails matching the RTU ↔ IP header artwork. The IP thumbnail explicitly shows **TCP / UDP**. The **Persistent TCP connection** control is displayed only for **TCP Client**; it is hidden for TCP Server and both UDP modes, and the stored TCP setting is preserved while UDP is selected.
 
@@ -57,7 +57,7 @@ See [Cache behavior and configuration](docs/CACHE.md) for details. The cache opt
 - Settings are saved persistently in ESP32 NVS (Arduino `Preferences`). GPIO changes trigger an automatic restart so the UART can be reinitialized.
 - Frame diagnostics: live RTU/TCP frame log, RTU CRC status, manual RTU-frame test and text export of the latest 64 log entries, including timing diagnostics.
 - **RTU CRC protection:** invalid RTU requests/responses are rejected before forwarding or caching; CRC failures are recorded in the diagnostics log. TCP Server mode returns gateway exception `0x0B` for an invalid downstream RTU response.
-- **Selectable remote-timeout policy:** one bilingual Web UI setting applies to both modes. `Standard` (default) returns a Modbus gateway exception when the remote endpoint times out; `Silent` sends no response upstream for that timeout only. The setting survives restart.
+- **Selectable error policy:** one bilingual Web UI setting applies to Client and Server (TCP/UDP). `Standard` (default) returns a Modbus exception for communication/protocol errors; `Silent` sends no Modbus response for any error, including a received slave exception. RTU frames with incorrect CRC are never forwarded or cached; in Standard mode only a newly generated gateway exception may be sent. The setting survives restart.
 - **Mode-aware cache controls:** Section 1 shows only the cache switch for the selected TCP mode. The inactive mode's enable setting is preserved when saving or switching modes.
 - Images are served on separate HTTP routes instead of being embedded in the HTML response, keeping the page response small.
 - **Persistent TCP Client connection** is enabled by default to avoid a new TCP handshake for every RTU request; disable it in Section 1 when a remote server requires one connection per request. The gateway reconnects when it detects a dropped session.
@@ -266,7 +266,7 @@ GPLv3 license text.
 
 ## Latest release
 
-Current source version: **v1.2.7** on `main` (fixed/adaptive cache TTL). The last release confirmed published by the maintainer is **v1.2.1**; v1.2.7 has not been published through the available GitHub integration. The v1.2.7 firmware has not yet been build- or hardware-validated. The Web UI supports mode-aware response caches, a TCP-only persistent connection setting, bilingual labels and harmonized RTU/IP artwork. See [CHANGELOG.md](CHANGELOG.md) for the release history, [docs/CLIENT_TCP_ASYNC.md](docs/CLIENT_TCP_ASYNC.md) for cooperative Client TCP handling, and [docs/CACHE.md](docs/CACHE.md) for cache behavior and data-freshness limits.
+Current source version: **v1.3.1** on `main` (strict CRC-first response validation, all-error silence and cache TTL/duplicate-key fixes). The last release confirmed published by the maintainer is **v1.2.1**; v1.2.7 has not been published through the available GitHub integration. The v1.2.7 firmware has not yet been build- or hardware-validated. The Web UI supports mode-aware response caches, a TCP-only persistent connection setting, bilingual labels and harmonized RTU/IP artwork. See [CHANGELOG.md](CHANGELOG.md) for the release history, [docs/CLIENT_TCP_ASYNC.md](docs/CLIENT_TCP_ASYNC.md) for cooperative Client TCP handling, and [docs/CACHE.md](docs/CACHE.md) for cache behavior and data-freshness limits.
 
 
 > **Web UI v1.2.7:** The Mode selector is transport-neutral: **Client (RTU → IP)** or **Server (IP → RTU)**. Choose **TCP** or **UDP** independently in Transport. The screenshots above show the current v1.2.7 labels.
