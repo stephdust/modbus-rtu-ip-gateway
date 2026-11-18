@@ -10,13 +10,13 @@ A Wi-Fi Modbus gateway built with **ESPHome**, **ESP32-S3** and the **Arduino fr
 
 > **Reference hardware:** [Waveshare ESP32-S3-RS485-CAN](https://docs.waveshare.com/ESP32-S3-RS485-CAN). The project defaults match this board's RS-485 signals: TX GPIO17, RX GPIO18 and RS485 enable GPIO21. The project maintainer reports successful testing with this device, including four connected Modbus TCP clients.
 
-> **Version 1.2.2 on `main`:** supports **TCP Client, TCP Server, UDP Client and UDP Server**. The maintainer reports successful functional tests of the four modes; robustness testing remains pending. See [TCP/UDP development and UI behavior](docs/TCP_UDP_DEVELOPMENT.md).
+> **Version 1.2.3 on `main`:** supports **TCP Client, TCP Server, UDP Client and UDP Server**. The maintainer reports successful functional tests of the four modes; robustness testing remains pending. See [TCP/UDP development and UI behavior](docs/TCP_UDP_DEVELOPMENT.md).
 
-### TCP/UDP web UI (v1.2.2)
+### TCP/UDP web UI (v1.2.3)
 
-The v1.2.2 source interface labels the network section **Modbus IP**, offers a TCP/UDP selector, and includes four harmonized blue/cyan section thumbnails matching the RTU ↔ IP header artwork. The IP thumbnail explicitly shows **TCP / UDP**. The **Persistent TCP connection** control is displayed only for **TCP Client**; it is hidden for TCP Server and both UDP modes, and the stored TCP setting is preserved while UDP is selected.
+The v1.2.3 source interface labels the network section **Modbus IP**, offers a TCP/UDP selector, and includes four harmonized blue/cyan section thumbnails matching the RTU ↔ IP header artwork. The IP thumbnail explicitly shows **TCP / UDP**. The **Persistent TCP connection** control is displayed only for **TCP Client**; it is hidden for TCP Server and both UDP modes, and the stored TCP setting is preserved while UDP is selected.
 
-## Transport and operating modes (v1.2.2)
+## Transport and operating modes (v1.2.3)
 
 **Important — transport compatibility:** The Modbus IP client and its corresponding Modbus IP server **must use the same transport protocol**: **TCP Client ↔ TCP Server**, or **UDP Client ↔ UDP Server**. A TCP client cannot communicate directly with a UDP server, nor can a UDP client communicate directly with a TCP server. Using the same port number (for example, 502) does not make the two transports interchangeable.
 
@@ -68,9 +68,9 @@ See [Cache behavior and configuration](docs/CACHE.md) for details. The cache opt
 
 ![Both gateway topologies: TCP Client / RTU Slave and TCP Server / RTU Master](docs/assets/system-architecture.png)
 
-## Web interface (v1.2.2)
+## Web interface (v1.2.3)
 
-### Aperçus de l'interface Web v1.2.2 — simulations
+### Aperçus de l'interface Web v1.2.3 — simulations
 
 > **Illustrations simulées, et non captures réelles de l'ESP32.** Elles reprennent l'organisation actuelle (logo, barre d'actions, paramètres et tableau de connexions), avec des adresses et états d'exemple. Les vrais journaux de trames, compteurs et connexions dépendent du matériel.
 
@@ -197,4 +197,4 @@ GPLv3 license text.
 
 ## Latest release
 
-Current source version: **v1.2.2** on `main` (fixed/adaptive cache TTL). The last release confirmed published by the maintainer is **v1.2.1**; v1.2.2 has not been published through the available GitHub integration. The v1.2.2 firmware has not yet been build- or hardware-validated. The Web UI supports mode-aware response caches, a TCP-only persistent connection setting, bilingual labels and harmonized RTU/IP artwork. See [CHANGELOG.md](CHANGELOG.md) for the release history, [docs/CLIENT_TCP_ASYNC.md](docs/CLIENT_TCP_ASYNC.md) for cooperative Client TCP handling, and [docs/CACHE.md](docs/CACHE.md) for cache behavior and data-freshness limits.
+Current source version: **v1.2.3** on `main` (fixed/adaptive cache TTL). The last release confirmed published by the maintainer is **v1.2.1**; v1.2.3 has not been published through the available GitHub integration. The v1.2.3 firmware has not yet been build- or hardware-validated. The Web UI supports mode-aware response caches, a TCP-only persistent connection setting, bilingual labels and harmonized RTU/IP artwork. See [CHANGELOG.md](CHANGELOG.md) for the release history, [docs/CLIENT_TCP_ASYNC.md](docs/CLIENT_TCP_ASYNC.md) for cooperative Client TCP handling, and [docs/CACHE.md](docs/CACHE.md) for cache behavior and data-freshness limits.
