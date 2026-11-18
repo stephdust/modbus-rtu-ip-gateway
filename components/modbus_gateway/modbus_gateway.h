@@ -1403,13 +1403,20 @@ class ModbusGateway : public Component {
       const size_t rlen = expected_rtu_response_(pdu[0], pdu.data(), pdu.size(),
                                                  response, sizeof(response),
                                                  first_delay, response_span);
-      const bool valid = rlen >= 5 && valid_crc_(response, rlen) &&
-                         response[0] == unit &&
-                         (response[1] == pdu[0] || response[1] == uint8_t(pdu[0] | 0x80));
-      if (valid) {
+      const bool crc_ok = rlen >= 5 && valid_crc_(response, rlen);
+      const bool unit_ok = crc_ok && response[0] == unit;
+      const bool success = unit_ok && gateway_policy::is_success(
+          pdu.data(), pdu.size(), response + 1, rlen - 3U);
+      const bool exception = unit_ok && gateway_policy::is_exception(
+          pdu.data(), pdu.size(), response + 1, rlen - 3U);
+      if (success || exception) {
         add_log_("RTU RX", response, rlen);
+        if (exception && silent_on_timeout_) {
+          add_event_("ERROR SILENT", "UDP Server | RTU slave exception suppressed; no UDP response.");
+          return;
+        }
         reply.assign(response + 1, response + rlen - 2);
-        if (reply[0] == pdu[0]) {
+        if (success) {
           if (cacheable && cache_server_enabled_)
             cache_store_(CACHE_DIRECTION_SERVER, unit, pdu, reply);
           else if (!cacheable)
@@ -1419,11 +1426,14 @@ class ModbusGateway : public Component {
         if (rlen >= 5) {
           ++crc_error_count_;
           add_log_("RTU RX", response, rlen);
-          add_event_("RTU ERROR", "Invalid RTU response or CRC in UDP Server mode.");
+          add_event_("RTU ERROR", "Invalid RTU frame: CRC, Unit ID, function, length or byte count.");
         } else {
           add_event_("RTU ERROR", "RTU response timeout in UDP Server mode.");
         }
-        if (rlen < 5 && silent_on_timeout_) return;
+        if (silent_on_timeout_) {
+          add_event_("ERROR SILENT", "UDP Server | Invalid or missing RTU response; no UDP reply.");
+          return;
+        }
         reply = {uint8_t(pdu[0] | 0x80), 0x0B};
       }
     }
