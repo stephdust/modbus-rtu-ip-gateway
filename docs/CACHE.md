@@ -11,20 +11,20 @@ The Web UI exposes two independent settings in **1. Modbus IP**. To keep the pag
 
 Both settings are independent and disabled by default. Changing the selected Client/Server mode updates the visible switch immediately without reloading the page. Saving in one mode updates only that mode’s cache setting; the hidden mode’s setting is preserved in NVS and appears again when that mode is selected.
 
-## Web UI behavior (v1.2.6)
+## Web UI behavior (v1.2.7)
 
 In **TCP Client** or **UDP Client**, only the **Client cache** switch is shown; in **TCP Server** or **UDP Server**, only the **Server cache** switch is shown. The inactive direction's saved setting is preserved. The **TTL mode** selector appears only when the selected direction's cache is enabled; the numeric TTL input appears only for Fixed TTL.
 
-For v1.2.2 UI simulations (not real screenshots), see the [four-mode interface gallery](QUICK_START.md#aperçus-de-linterface-web-v121--simulations).
+For actual v1.2.7 screenshots of all four modes, see the [Web interface gallery](QUICK_START.md#captures-réelles-de-linterface-web-v127--quatre-modes).
 
-## TTL modes: fixed or adaptive (v1.2.6)
+## TTL modes: fixed or adaptive (v1.2.7)
 
 The Web interface offers a **TTL mode** selector whenever the active Client/Server cache is enabled:
 
 - **Fixed TTL** (default, backward compatible): manually enter a TTL from 50 to 10,000 ms (default 500 ms).
 - **Adaptive TTL**: estimate the polling interval separately for each cache key (direction, Unit ID, function, start address and quantity), then choose a TTL of 80% of the observed interval, bounded to 50–10,000 ms. Until an interval has been observed, the configured fixed TTL is used as a fallback.
 
-This feature is included in the v1.2.6 source and still requires compilation and hardware validation. The selected TTL mode is saved in ESP32 NVS. Adaptive estimates are held only in RAM and reset when the cache is cleared. The age of a cached response is always measured from the time it was fetched, never from a cache hit. Writes continue to invalidate affected cached reads.
+This feature is included in the v1.2.7 source and still requires compilation and hardware validation. The selected TTL mode is saved in ESP32 NVS. Adaptive estimates are held only in RAM and reset when the cache is cleared. The age of a cached response is always measured from the time it was fetched, never from a cache hit. Writes continue to invalidate affected cached reads.
 
 **Important:** Adaptive TTL reduces unnecessary refreshes for repeated reads, but cannot guarantee fresh values if device data changes between polls. For safety-critical or rapidly changing registers, disable the cache or use a short fixed TTL. Adaptive behavior should be validated with the actual polling workload and device before production use.
 
@@ -86,11 +86,11 @@ A cache hit intentionally returns a previous valid device response. The data can
 
 From component release 1.1.9, normal RTU-originated Client TCP transactions receive the remote TCP response cooperatively through the ESPHome loop. Cache hits remain immediate and do not open or use the TCP socket. A manual transaction initiated from the Web UI still uses the synchronous diagnostic helper; it is refused with HTTP 409 while a normal Client TCP transaction is already in progress so that both operations cannot read from the same TCP stream concurrently.
 
-## TCP and UDP (v1.2.6)
+## TCP and UDP (v1.2.7)
 
 Both cache switches are **direction-specific**, not transport-specific: **Client** applies to TCP Client and UDP Client, and **Server** applies to TCP Server and UDP Server. The currently selected direction determines which checkbox appears. The inactive direction's saved setting is retained.
 
 The shared **TTL mode** selector is shown only when the currently selected direction's **Enable cache** checkbox is checked. The numeric **cache TTL (ms)** field is shown only for **Fixed TTL**. Switching to **Adaptive TTL** hides the numeric field but retains its value as a fallback. Disabling the cache hides the TTL controls without erasing the settings. Only valid read functions 01–04 are cached; writes are not cached and trigger the documented invalidation rules.
 
 
-> **Web UI v1.2.7:** The Mode selector is transport-neutral: **Client (RTU → IP)** or **Server (IP → RTU)**. Choose **TCP** or **UDP** independently in Transport. Earlier v1.2.6 screenshots remain historical references and may display older labels.
+> **Web UI v1.2.7:** The Mode selector is transport-neutral: **Client (RTU → IP)** or **Server (IP → RTU)**. Choose **TCP** or **UDP** independently in Transport. The documentation gallery uses the current v1.2.7 interface.
