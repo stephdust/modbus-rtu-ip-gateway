@@ -1,3 +1,10 @@
+## Unreleased — changes after v1.2.1 (on `main`)
+
+- Added a Fixed/Adaptive response-cache TTL selector in the Web UI for Client and Server modes over TCP/UDP.
+- Fixed TTL retains the 50–10,000 ms range and 500 ms default. Adaptive TTL estimates 80% of the observed per-key polling interval, bounded to the same range, and falls back to the fixed value until a usable interval is available.
+- Persist the selected TTL mode in NVS; adaptive observations and cache entries remain in RAM.
+- Updated README, quick start, cache behavior and TCP/UDP documentation. **Compilation and hardware validation are pending.**
+
 ## 1.2.1 — TCP/UDP gateway (2026-11-15)
 
 - Published on `main` under the renamed repository `stephdust/my-modbus-rtu-ip-gateway`.
