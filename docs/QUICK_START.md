@@ -91,25 +91,25 @@ The setting is saved across restarts. It does not suppress CRC errors or other t
 The cache control follows the selected mode: **TCP Client** shows only the Client cache switch, while **TCP Server** shows only the Server cache switch. Switching modes changes the visible option immediately. The two settings are independent: saving one mode does not overwrite the other mode's hidden setting. When the active cache is enabled, choose **Fixed TTL** (50–10,000 ms, default 500 ms) or **Adaptive TTL**. Adaptive mode estimates each request's polling interval and sets TTL to 80% of that interval, bounded to 50–10,000 ms; the fixed value is the initial fallback. The selector is saved in NVS. This addition is part of the v1.2.6 source on `main` and has not yet been compiled or hardware-validated. Both caches are disabled by default. See [Cache behavior and configuration](CACHE.md) before enabling caching on a process where stale values could be unsafe.
 
 
-### Aperçus de l'interface Web v1.2.6 — simulations
+### Aperçus de l'interface Web v1.2.6 — simulations (non captures réelles)
 
 > **Illustrations simulées, et non captures réelles de l'ESP32.** Elles reprennent l'organisation actuelle (logo, barre d'actions, paramètres et tableau de connexions), avec des adresses et états d'exemple. Les vrais journaux de trames, compteurs et connexions dépendent du matériel.
 
 **TCP Client (RTU → IP)**
 
-![Simulation de l'interface tcp-client v1.2.1](assets/ui-v1.2.2-tcp-client-simulation.svg)
+![Simulation de l'interface tcp-client v1.2.1](assets/ui-v1.2.6-tcp-client-simulation.svg)
 
 **TCP Serveur (IP → RTU)**
 
-![Simulation de l'interface tcp-server v1.2.1](assets/ui-v1.2.2-tcp-server-simulation.svg)
+![Simulation de l'interface tcp-server v1.2.1](assets/ui-v1.2.6-tcp-server-simulation.svg)
 
 **UDP Client (RTU → IP)**
 
-![Simulation de l'interface udp-client v1.2.1](assets/ui-v1.2.2-udp-client-simulation.svg)
+![Simulation de l'interface udp-client v1.2.1](assets/ui-v1.2.6-udp-client-simulation.svg)
 
 **UDP Serveur (IP → RTU)**
 
-![Simulation de l'interface udp-server v1.2.1](assets/ui-v1.2.2-udp-server-simulation.svg)
+![Simulation de l'interface udp-server v1.2.1](assets/ui-v1.2.6-udp-server-simulation.svg)
 
 Le panneau de diagnostics des trames, situé sous les paramètres, distingue **RTU RAW** (cyan), **TCP/UDP RAW** (orange) et les mesures **TIMING** (violet). La barre d'actions sous le logo regroupe le thème, la langue, **Enregistrer / appliquer**, **Redémarrer** et **Actualiser**.
 
