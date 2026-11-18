@@ -35,7 +35,7 @@ The gateway provides two independent optional response caches, one for each **Cl
 - **IP Client mode (RTU → TCP/UDP):** repeated RTU read requests can be answered from the last valid Modbus TCP response.
 - **IP Server mode (TCP/UDP → RTU):** repeated TCP read requests can be answered from the last valid RTU response without querying the RS-485 bus again.
 
-Both caches are disabled by default. Each can be enabled separately in the Web UI. Choose **Fixed TTL** (50–10,000 ms; default 500 ms) or **Adaptive TTL**, which estimates a separate TTL for each polling request key from 80% of its observed request interval (bounded to 50–10,000 ms). The fixed value is used until an interval is observed. The mode is persisted in NVS; adaptive estimates remain in RAM. This feature is included in the v1.2.2 source; firmware build and hardware validation are still pending. The cache has 64 entries and only stores valid read functions 01–04. Write and read/write operations are never cached; successful writes invalidate only overlapping cached ranges in the corresponding writable data space. Unknown or malformed write ranges trigger a conservative invalidation of all cached reads for that Unit ID and direction. Cache hits do not extend the TTL. Cached values may therefore be stale up to the applicable fixed or adaptive TTL; keep the cache disabled when every read must return the freshest device value.
+Both caches are disabled by default. Each can be enabled separately in the Web UI. Choose **Fixed TTL** (50–10,000 ms; default 500 ms) or **Adaptive TTL**, which estimates a separate TTL for each polling request key from 80% of its observed request interval (bounded to 50–10,000 ms). The fixed value is used until an interval is observed. The mode is persisted in NVS; adaptive estimates remain in RAM. The conventional cache has been exercised in user-provided gateway logs. The optional background refresh added in source v1.3.2 is a separate feature and still needs ESPHome build and hardware validation. The cache has 64 entries and only stores valid read functions 01–04. Write and read/write operations are never cached; successful writes invalidate only overlapping cached ranges in the corresponding writable data space. Unknown or malformed write ranges trigger a conservative invalidation of all cached reads for that Unit ID and direction. Cache hits do not extend the TTL. Cached values may therefore be stale up to the applicable fixed or adaptive TTL; keep the cache disabled when every read must return the freshest device value.
 
 See [Cache behavior and configuration](docs/CACHE.md) for details. The cache option displayed in Section 1 follows the selected Client/Server mode; the other mode's setting remains saved in NVS.
 
@@ -64,7 +64,7 @@ revision.
 
 ## Features
 
-- **Live cache diagnostics (current `main`):** the Counters / Diagnostics panel displays active valid cache entries (`0 / 64` when disabled) and the effective TTL range for populated entries, updated with the frame diagnostics. The occupancy reflects the selected Client/Server direction; expired entries are excluded. This addition is not yet hardware-validated.
+- **Live cache diagnostics (current `main`):** the Counters / Diagnostics panel displays active valid cache entries (`0 / 64` when disabled) and the effective TTL range for populated entries, updated with the frame diagnostics. The occupancy reflects the selected Client/Server direction; expired entries are excluded. The cache occupancy is derived from RAM entries and was not independently bench-calibrated.
 
 - Per-transaction latency diagnostics in both TCP Client and TCP Server modes.
 - Non-blocking TCP response reception in normal TCP Client mode: the ESPHome loop keeps servicing the Web UI and other tasks while the remote Modbus TCP server prepares its response.
@@ -94,9 +94,11 @@ revision.
 
 ### Persistent TCP reconnect (source v1.2.8)
 
-In **TCP Client** mode with **Persistent TCP connection** enabled, if a reused socket fails while sending a request, disconnects before a complete response, or times out waiting for a response, the gateway closes that socket and retries **one time** with a new TCP connection for Modbus function **03** or **04** only. The log shows `TCP RETRY`. Writes are **never automatically replayed**, to avoid duplicate side effects. Reconnection is request-driven, not a background keepalive. This change is on `main` and still needs compilation and hardware testing; the v1.2.7 release is unchanged.
+In **TCP Client** mode with **Persistent TCP connection** enabled, if a reused socket fails while sending a request, disconnects before a complete response, or times out waiting for a response, the gateway closes that socket and retries **one time** with a new TCP connection for Modbus function **03** or **04** only. The log shows `TCP RETRY`. Writes are **never automatically replayed**, to avoid duplicate side effects. Reconnection is request-driven, not a background keepalive. This behavior is present on `main`. See the v1.3.2 validation notes above for the newer background-refresh option.
 
-## Web interface (v1.2.7)
+## Historical web interface screenshots (v1.2.7)
+
+These screenshots document the v1.2.7 interface, not all the controls of the current v1.3.2 source (such as background cache refresh).
 
 ### Captures réelles de l'interface Web v1.2.7 — quatre modes
 
@@ -287,15 +289,15 @@ The software is provided **without warranty**; see Sections 15 and 16 of the
 GPLv3 license text.
 
 
-## Latest release
+## Source version and validation
 
-Current source version: **v1.3.1** on `main` (strict CRC-first response validation, all-error silence and cache TTL/duplicate-key fixes). The last release confirmed published by the maintainer is **v1.2.1**; v1.2.7 has not been published through the available GitHub integration. The v1.2.7 firmware has not yet been build- or hardware-validated. The Web UI supports mode-aware response caches, a TCP-only persistent connection setting, bilingual labels and harmonized RTU/IP artwork. See [CHANGELOG.md](CHANGELOG.md) for the release history, [docs/CLIENT_TCP_ASYNC.md](docs/CLIENT_TCP_ASYNC.md) for cooperative Client TCP handling, and [docs/CACHE.md](docs/CACHE.md) for cache behavior and data-freshness limits.
+The component source on `main` is **v1.3.2** (see `components/modbus_gateway/manifest.json`). This version adds the optional bounded stale-while-revalidate client cache and RTU reply-deadline protection to earlier TCP/UDP, CRC and error-policy features. **Version of the source is not proof of a published GitHub release or a firmware installed on a device.** The new v1.3.2 functionality has not yet been verified by an ESPHome build or physical-display test in this repository. Earlier versions and their dated screenshots remain in the documentation as historical references. See [CHANGELOG.md](CHANGELOG.md), [Client TCP handling](docs/CLIENT_TCP_ASYNC.md) and [Cache behavior](docs/CACHE.md).
 
 
-> **Web UI v1.2.7:** The Mode selector is transport-neutral: **Client (RTU → IP)** or **Server (IP → RTU)**. Choose **TCP** or **UDP** independently in Transport. The screenshots above show the current v1.2.7 labels.
+> **Historical v1.2.7 screenshots:** These show the transport-neutral Client/Server interface as captured at the time. For the currently implemented options, see [Quick start](docs/QUICK_START.md) and [Cache behavior](docs/CACHE.md).
 
 ### ESPHome diagnostics interface (port 8080)
 
 The sample `my-modbus-gateway.yaml` uses ESPHome Web Server **v3**, port **8080**, and `local: true`. ESPHome embeds its official interface in the firmware, so the browser does **not** need Internet access. The YAML groups entities by network, gateway, system, memory and maintenance.
 
-The **Interface web** text sensor displays the gateway URL (port 80). The **Interface web** URL is converted into a clickable link by a small inline script automatically injected into ESPHome's HTML index by the GitHub-hosted `modbus_gateway` component at compile time. No extra file is required and no CDN is used at runtime. The experimental `web-link-addon.js` and `web-link-entry.js` files are not referenced by the YAML. This integration needs compilation and hardware/browser validation.
+The **Interface web** text sensor displays the gateway URL, built from the Wi-Fi IP address by the YAML automation when that IP is updated (for example, `http://192.168.1.101/`). This is a **text sensor**, not a component-injected hyperlink: the repository does **not** inject custom JavaScript into the ESPHome v3 index page. The gateway's own Modbus configuration and frame diagnostics are served separately on **HTTP port 80**, while the stock offline ESPHome diagnostics UI is served on **port 8080**. Open the displayed URL directly in a browser if the text is not rendered as a clickable link. No additional `web-link-*.js` script or CDN is required.
