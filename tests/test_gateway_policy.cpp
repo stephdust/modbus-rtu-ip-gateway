@@ -11,14 +11,14 @@
 using namespace esphome::modbus_gateway;
 
 struct CacheStub {
-  bool valid = false;
-  uint8_t direction = 0;
-  uint8_t unit_id = 0;
-  uint8_t function_code = 0;
-  uint16_t start_address = 0;
-  uint16_t quantity = 0;
-  uint32_t stored_at_ms = 0;
-  uint32_t ttl_ms = 500;
+  bool valid;
+  uint8_t direction;
+  uint8_t unit_id;
+  uint8_t function_code;
+  uint16_t start_address;
+  uint16_t quantity;
+  uint32_t stored_at_ms;
+  uint32_t ttl_ms;
 };
 
 static std::vector<uint8_t> rtu(uint8_t unit, const std::vector<uint8_t>& pdu) {
