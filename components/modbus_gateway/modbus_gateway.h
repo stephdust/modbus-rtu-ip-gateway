@@ -531,21 +531,37 @@ class ModbusGateway : public Component {
     const bool enabled = client_mode ? cache_client_enabled_ : cache_server_enabled_;
     const uint8_t direction = client_mode ? CACHE_DIRECTION_CLIENT : CACHE_DIRECTION_SERVER;
     const uint32_t now = millis();
-    uint32_t count = 0, min_ttl = 0, max_ttl = 0;
+    uint32_t count = 0, stale_count = 0, min_ttl = 0, max_ttl = 0;
+    const bool allow_stale = client_mode && enabled && cache_swr_enabled_ &&
+                             transport_ == "TCP";
     if (enabled) {
       for (const auto &entry : response_cache_) {
         if (!entry.valid || entry.direction != direction) continue;
         const uint32_t ttl = cache_ttl_adaptive_ ? entry.ttl_ms : cache_ttl_ms_;
-        if (uint32_t(now - entry.stored_at_ms) >= ttl) continue;
+        const auto age = gateway_policy::classify_cache_age(
+            now, entry.stored_at_ms, ttl, cache_swr_max_age_ms_, allow_stale);
+        if (age == gateway_policy::CacheAge::Unavailable) continue;
         ++count;
+        if (age == gateway_policy::CacheAge::Stale) ++stale_count;
         if (min_ttl == 0 || ttl < min_ttl) min_ttl = ttl;
         if (ttl > max_ttl) max_ttl = ttl;
       }
     }
     return String("{\"enabled\":") + (enabled ? "true" : "false") +
            ",\"entries\":" + String(count) +
+           ",\"stale_entries\":" + String(stale_count) +
            ",\"capacity\":" + String(RESPONSE_CACHE_CAPACITY) +
            ",\"adaptive\":" + (cache_ttl_adaptive_ ? "true" : "false") +
+           ",\"swr_enabled\":" + (allow_stale ? "true" : "false") +
+           ",\"max_age_ms\":" + String(cache_swr_max_age_ms_) +
+           ",\"rtu_window_ms\":" + String(rtu_reply_window_ms_) +
+           ",\"refresh_pending\":" + (client_txn_.background_refresh ? "true" : "false") +
+           ",\"fresh_hits\":" + String(cache_fresh_hits_) +
+           ",\"stale_hits\":" + String(cache_stale_hits_) +
+           ",\"refresh_started\":" + String(background_refresh_started_) +
+           ",\"refresh_success\":" + String(background_refresh_succeeded_) +
+           ",\"refresh_failure\":" + String(background_refresh_failed_) +
+           ",\"late_rtu_dropped\":" + String(rtu_late_reply_dropped_) +
            ",\"ttl_min_ms\":" + String(min_ttl) +
            ",\"ttl_max_ms\":" + String(max_ttl) + "}";
   }
@@ -649,6 +665,8 @@ class ModbusGateway : public Component {
     if (cache_ttl_ms_ < 50 || cache_ttl_ms_ > 10000) cache_ttl_ms_ = 500;
     if (cache_swr_max_age_ms_ < 1000 || cache_swr_max_age_ms_ > 30000)
       cache_swr_max_age_ms_ = 10000;
+    if (cache_swr_max_age_ms_ < cache_ttl_ms_)
+      cache_swr_max_age_ms_ = cache_ttl_ms_;
     if (rtu_reply_window_ms_ < 250 || rtu_reply_window_ms_ > 2000)
       rtu_reply_window_ms_ = 500;
     tx_gpio_ = prefs_.getInt("tx", tx_gpio_);
@@ -2685,6 +2703,8 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
       int window = web_.arg("rtu_window").toInt();
       if (window >= 250 && window <= 2000) rtu_reply_window_ms_ = uint32_t(window);
     }
+    if (cache_swr_max_age_ms_ < cache_ttl_ms_)
+      cache_swr_max_age_ms_ = cache_ttl_ms_;
     prefs_.putBool("cacheswr", cache_swr_enabled_);
     prefs_.putUInt("swrmaxage", cache_swr_max_age_ms_);
     prefs_.putUInt("rtuwindow", rtu_reply_window_ms_);
