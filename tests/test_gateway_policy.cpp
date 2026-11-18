@@ -112,5 +112,35 @@ int main() {
   assert(adaptive != nullptr);
   assert(!entries[0].valid);
 
+  // SWR keeps a validated entry stale until an absolute 10-second cap.
+  using gateway_policy::CacheAge;
+  using gateway_policy::classify_cache_age;
+  assert(classify_cache_age(1200, 1000, 2000, 10000, true) == CacheAge::Fresh);
+  assert(classify_cache_age(3000, 1000, 2000, 10000, true) == CacheAge::Stale);
+  assert(classify_cache_age(10999, 1000, 2000, 10000, true) == CacheAge::Stale);
+  assert(classify_cache_age(11000, 1000, 2000, 10000, true) == CacheAge::Unavailable);
+  assert(classify_cache_age(3000, 1000, 2000, 10000, false) == CacheAge::Unavailable);
+  assert(classify_cache_age(2700, 1000, 2000, 1000, true) == CacheAge::Fresh);
+  assert(classify_cache_age(20U, UINT32_MAX - 100U, 200U, 1000U, true) == CacheAge::Fresh);
+  assert(classify_cache_age(300U, UINT32_MAX - 100U, 200U, 1000U, true) == CacheAge::Stale);
+
+  // Fresh TTL expiration must not evict a still-safe stale entry when storing
+  // a background refresh, and must never resurrect one beyond absolute age.
+  CacheStub swr[1] = {{true, 0, 17, 3, 52, 97, 1000, 2000}};
+  assert(gateway_policy::cache_store_slot(
+      swr, 1, 3500, 0, 17, 3, 52, 97, false, 2000, 10000) == &swr[0]);
+  assert(swr[0].valid);
+  assert(gateway_policy::cache_store_slot(
+      swr, 1, 11000, 0, 17, 3, 52, 97, false, 2000, 10000) == &swr[0]);
+  assert(!swr[0].valid);
+
+  // Deadline includes full RTU transmission time. At 9600 8N1 a 97-register
+  // response is 198 bytes and occupies ~206.25ms on the wire (plus guard).
+  assert(gateway_policy::rtu_reply_fits_window(0U, 198U, 9600U, 10U, 500U));
+  assert(!gateway_policy::rtu_reply_fits_window(300000U, 198U, 9600U, 10U, 500U));
+  assert(gateway_policy::rtu_reply_fits_window(0U, 11U, 9600U, 10U, 500U));
+  assert(!gateway_policy::rtu_reply_fits_window(0U, 198U, 0U, 10U, 500U));
+  assert(!gateway_policy::rtu_reply_fits_window(0U, 198U, 9600U, 10U, 0U));
+
   return 0;
 }
