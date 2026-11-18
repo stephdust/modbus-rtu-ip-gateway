@@ -16,7 +16,7 @@ A Wi-Fi Modbus gateway built with **ESPHome**, **ESP32-S3** and the **Arduino fr
 
 The source interface labels the network section **Modbus IP**, offers a TCP/UDP selector, and includes four harmonized blue/cyan section thumbnails matching the RTU ↔ IP header artwork. The IP thumbnail explicitly shows **TCP / UDP**. The **Persistent TCP connection** control is displayed only for **TCP Client**; it is hidden for TCP Server and both UDP modes, and the stored TCP setting is preserved while UDP is selected.
 
-## Transport and operating modes (v1.2.7)
+## Transport and operating modes
 
 **Important — transport compatibility:** The Modbus IP client and its corresponding Modbus IP server **must use the same transport protocol**: **TCP Client ↔ TCP Server**, or **UDP Client ↔ UDP Server**. A TCP client cannot communicate directly with a UDP server, nor can a UDP client communicate directly with a TCP server. Using the same port number (for example, 502) does not make the two transports interchangeable.
 
@@ -35,7 +35,7 @@ The gateway provides two independent optional response caches, one for each **Cl
 - **IP Client mode (RTU → TCP/UDP):** repeated RTU read requests can be answered from the last valid Modbus TCP response.
 - **IP Server mode (TCP/UDP → RTU):** repeated TCP read requests can be answered from the last valid RTU response without querying the RS-485 bus again.
 
-Both caches are disabled by default. Each can be enabled separately in the Web UI. Choose **Fixed TTL** (50–10,000 ms; default 500 ms) or **Adaptive TTL**, which estimates a separate TTL for each polling request key from 80% of its observed request interval (bounded to 50–10,000 ms). The fixed value is used until an interval is observed. The mode is persisted in NVS; adaptive estimates remain in RAM. The conventional cache has been exercised in user-provided gateway logs. The optional background refresh added in source v1.3.2 is a separate feature and still needs ESPHome build and hardware validation. The cache has 64 entries and only stores valid read functions 01–04. Write and read/write operations are never cached; successful writes invalidate only overlapping cached ranges in the corresponding writable data space. Unknown or malformed write ranges trigger a conservative invalidation of all cached reads for that Unit ID and direction. Cache hits do not extend the TTL. Cached values may therefore be stale up to the applicable fixed or adaptive TTL; keep the cache disabled when every read must return the freshest device value.
+Both caches are disabled by default. Each can be enabled separately in the Web UI. Choose **Fixed TTL** (50–10,000 ms; default 500 ms) or **Adaptive TTL**, which estimates a separate TTL for each polling request key from 80% of its observed request interval (bounded to 50–10,000 ms). The fixed value is used until an interval is observed. The mode is persisted in NVS; adaptive estimates remain in RAM. The conventional cache has been exercised in user-provided gateway logs. The optional background refresh added in source v1.3.2 has now been reported **working well on the maintainer's physical RTU display** through a Flow.io Modbus TCP server; broader regression, safety and long-duration tests are still outstanding. The cache has 64 entries and only stores valid read functions 01–04. Write and read/write operations are never cached; successful writes invalidate only overlapping cached ranges in the corresponding writable data space. Unknown or malformed write ranges trigger a conservative invalidation of all cached reads for that Unit ID and direction. Cache hits do not extend the TTL. Cached values may therefore be stale up to the applicable fixed or adaptive TTL; keep the cache disabled when every read must return the freshest device value.
 
 See [Cache behavior and configuration](docs/CACHE.md) for details. The cache option displayed in Section 1 follows the selected Client/Server mode; the other mode's setting remains saved in NVS.
 
@@ -59,8 +59,7 @@ reflect live safety-critical state.
 
 The `/cache-stats` endpoint reports stale hits, successful/failed refreshes,
 and dropped late RTU responses. Full details in [Cache behavior](docs/CACHE.md).
-**ESPHome compilation and hardware tests are still required** for this source
-revision.
+**Field validation (reported by the maintainer, 18 November 2026):** the new background-refresh cache works well with a real RTU display connected through the ESP32-S3 gateway to the Flow.io Modbus TCP server. This is not an independent protocol conformance, safety or multi-transport regression test.
 
 ## Features
 
@@ -291,7 +290,7 @@ GPLv3 license text.
 
 ## Source version and validation
 
-The component source on `main` is **v1.3.2** (see `components/modbus_gateway/manifest.json`). This version adds the optional bounded stale-while-revalidate client cache and RTU reply-deadline protection to earlier TCP/UDP, CRC and error-policy features. **Version of the source is not proof of a published GitHub release or a firmware installed on a device.** The new v1.3.2 functionality has not yet been verified by an ESPHome build or physical-display test in this repository. Earlier versions and their dated screenshots remain in the documentation as historical references. See [CHANGELOG.md](CHANGELOG.md), [Client TCP handling](docs/CLIENT_TCP_ASYNC.md) and [Cache behavior](docs/CACHE.md).
+The component source on `main` is **v1.3.2** (see `components/modbus_gateway/manifest.json`). This version adds the optional bounded stale-while-revalidate client cache and RTU reply-deadline protection to earlier TCP/UDP, CRC and error-policy features. **Version of the source is not proof of a published GitHub release or a firmware installed on a device.** The maintainer has confirmed successful real-display operation of the v1.3.2 background cache on their ESP32-S3 installation. The repository does not include independent endurance, safety, or full TCP/UDP mode regression test results. Earlier versions and their dated screenshots remain in the documentation as historical references. See [CHANGELOG.md](CHANGELOG.md), [v1.3.2 release notes](docs/RELEASE_NOTES_v1.3.2.md), [Client TCP handling](docs/CLIENT_TCP_ASYNC.md) and [Cache behavior](docs/CACHE.md).
 
 
 > **Historical v1.2.7 screenshots:** These show the transport-neutral Client/Server interface as captured at the time. For the currently implemented options, see [Quick start](docs/QUICK_START.md) and [Cache behavior](docs/CACHE.md).
