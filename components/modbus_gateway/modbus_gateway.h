@@ -1622,6 +1622,11 @@ class ModbusGateway : public Component {
 
     uint16_t cache_start = 0;
     uint16_t cache_quantity = 0;
+    if (pdu.empty()) {
+      add_event_("TCP ERROR", "Empty Modbus request PDU discarded.");
+      clear_tcp_request_(slot);
+      return;
+    }
     const bool cacheable_read = is_cacheable_read_request_(pdu, cache_start, cache_quantity);
     if (cache_server_enabled_ && cacheable_read) {
       std::vector<uint8_t> cached_pdu;
@@ -1682,10 +1687,21 @@ class ModbusGateway : public Component {
     const size_t rlen = expected_rtu_response_(pdu[0], pdu.data(), pdu.size(), response, sizeof(response),
                                                rtu_first_byte_us, rtu_response_span_us);
     rtu_response_wait_us = micros() - rtu_wait_started_us;
-    if (rlen >= 5 && valid_crc_(response, rlen)) {
+    const bool crc_ok = rlen >= 5 && valid_crc_(response, rlen);
+    const bool unit_ok = crc_ok && response[0] == unit;
+    const bool success = unit_ok && gateway_policy::is_success(
+        pdu.data(), pdu.size(), response + 1, rlen - 3U);
+    const bool exception = unit_ok && gateway_policy::is_exception(
+        pdu.data(), pdu.size(), response + 1, rlen - 3U);
+    if (success || exception) {
       add_log_("RTU RX", response, rlen);
+      if (exception && silent_on_timeout_) {
+        add_event_("ERROR SILENT", "TCP Server | RTU slave exception suppressed; no TCP reply.");
+        clear_tcp_request_(slot);
+        return;
+      }
       std::vector<uint8_t> response_pdu(response + 1, response + rlen - 2);
-      if (response_pdu.size() > 0 && response_pdu[0] == pdu[0]) {
+      if (success) {
         if (cacheable_read && cache_server_enabled_) {
           cache_store_(CACHE_DIRECTION_SERVER, unit, pdu, response_pdu);
         } else if (!cacheable_read) {
@@ -1724,7 +1740,8 @@ class ModbusGateway : public Component {
                    String(unit) + "; Function=" + String(pdu[0]) +
                    "; bytes=" + String(rlen) + "; " + crc_detail +
                    "; total CRC errors=" + String(crc_error_count_) +
-                   ". TCP gateway exception 0x0B returned.");
+                   (silent_on_timeout_ ? ". Silent mode: no TCP reply." :
+                                         ". TCP gateway exception 0x0B returned."));
         ESP_LOGW("modbus_gateway", "Discarded RTU response with invalid CRC (%s)", crc_detail.c_str());
       } else {
         add_event_("RTU ERROR", String("Server mode | No complete RTU response; Unit ID=") +
@@ -1732,9 +1749,8 @@ class ModbusGateway : public Component {
                    (silent_on_timeout_ ? ". Silent mode: no TCP response sent." :
                                          ". TCP gateway exception 0x0B returned."));
       }
-      const bool rtu_timeout = rlen < 5;
-      if (rtu_timeout && silent_on_timeout_) {
-        add_event_("TIMEOUT SILENT", String("Server mode | RTU slave timeout; no TCP reply sent. Unit ID=") +
+      if (silent_on_timeout_) {
+        add_event_("ERROR SILENT", String("Server mode | Invalid or missing RTU response; no TCP reply. Unit ID=") +
                    String(unit) + "; TCP Unit ID=" + String(tcp_unit) +
                    "; Function=" + String(pdu[0]) + ".");
         tcp_write_us = 0;
