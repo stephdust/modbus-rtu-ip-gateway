@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Modbus RTU-TCP Gateway contributors.
 import json
+import gzip
+import re
 from pathlib import Path
 
 import esphome.codegen as cg
@@ -20,6 +22,7 @@ def _install_offline_gateway_link():
         return
 
     original = web_server.build_index_html
+    original_serve_local = web_server.serve_local
     script = r"""
 <script>
 (() => {
@@ -60,13 +63,40 @@ def _install_offline_gateway_link():
 })();
 </script>"""
 
-    def build_index_html_with_link(config):
-        html = original(config)
-        if config.get("version") != 3:
-            return html
+    def _offline_v3_html():
+        # ESPHome local:true serves a precompressed INDEX_GZ/INDEX_BR, bypassing
+        # build_index_html entirely. Read ESPHome's own bundled v3 gzip frontend
+        # at compile time and emit a patched, self-contained HTML resource.
+        header = Path(web_server.__file__).with_name("server_index_v3.h")
+        source = header.read_text(encoding="utf-8")
+        match = re.search(
+            r"#ifdef USE_WEBSERVER_GZIP\\s+constexpr uint8_t INDEX_GZ\\[\\] PROGMEM = \\{(.*?)\\};",
+            source,
+            flags=re.S,
+        )
+        if match is None:
+            raise ValueError("Cannot locate ESPHome v3 bundled gzip frontend: " + str(header))
+        packed = bytes(int(x, 16) for x in re.findall(r"0x([0-9a-fA-F]{2})", match.group(1)))
+        html = gzip.decompress(packed).decode("utf-8")
+        if "</body>" not in html:
+            raise ValueError("ESPHome v3 bundled frontend has no closing body tag")
         return html.replace("</body>", script + "</body>", 1)
 
+    def serve_local_with_link(config, wifi_config):
+        if config.get("version") == 3 and config.get("local") is True:
+            # Use ESPHome's ordinary INDEX_HTML path instead of INDEX_GZ so
+            # the injected script is actually served. Everything is still
+            # embedded in firmware; no browser Internet access is required.
+            return False
+        return original_serve_local(config, wifi_config)
+
+    def build_index_html_with_link(config):
+        if config.get("version") == 3 and config.get("local") is True:
+            return _offline_v3_html()
+        return original(config)
+
     build_index_html_with_link._modbus_gateway_link = True
+    web_server.serve_local = serve_local_with_link
     web_server.build_index_html = build_index_html_with_link
 
 
