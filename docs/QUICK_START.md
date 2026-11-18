@@ -88,8 +88,18 @@ Invalid CRC RTU requests are discarded before forwarding in either mode. The err
 
 ### Response cache (mode-specific)
 
-The cache control follows the selected mode: **TCP Client** shows only the Client cache switch, while **TCP Server** shows only the Server cache switch. Switching modes changes the visible option immediately. The two settings are independent: saving one mode does not overwrite the other mode's hidden setting. When the active cache is enabled, choose **Fixed TTL** (50–10,000 ms, default 500 ms) or **Adaptive TTL**. Adaptive mode estimates each request's polling interval and sets TTL to 80% of that interval, bounded to 50–10,000 ms; the fixed value is the initial fallback. The selector is saved in NVS. The conventional cache has been exercised in user-provided gateway logs. Source v1.3.2 additionally offers an **optional TCP Client background refresh** with bounded stale data and a configurable RTU response window; that new behavior still requires ESPHome compilation and physical-display validation. Both caches are disabled by default. See [Cache behavior and configuration](CACHE.md) before enabling caching on a process where stale values could be unsafe.
+The cache control follows the selected mode: **TCP Client** shows only the Client cache switch, while **TCP Server** shows only the Server cache switch. Switching modes changes the visible option immediately. The two settings are independent: saving one mode does not overwrite the other mode's hidden setting. When the active cache is enabled, choose **Fixed TTL** (50–10,000 ms, default 500 ms) or **Adaptive TTL**. Adaptive mode estimates each request's polling interval and sets TTL to 80% of that interval, bounded to 50–10,000 ms; the fixed value is the initial fallback. The selector is saved in NVS. The conventional cache has been exercised in user-provided gateway logs. Source v1.3.2 additionally offers an **optional TCP Client background refresh** with bounded stale data and a configurable RTU response window; the maintainer has confirmed this new behavior works well on the physical RTU display with Flow.io as the TCP server. Broader regression and endurance testing remain outstanding. Both caches are disabled by default. See [Cache behavior and configuration](CACHE.md) before enabling caching on a process where stale values could be unsafe.
 
+
+### Optional v1.3.2 background cache refresh (TCP Client only)
+
+1. Select **Transport = TCP** and **Mode = Client** in the gateway Web UI on port 80.
+2. Enable **Persistent TCP connection** and **Client cache**.
+3. Choose a conventional Fixed or Adaptive cache TTL; enable **Client cache: respond immediately and refresh in background**.
+4. Configure **Maximum data age** (1,000–30,000 ms, default 10,000) and **RTU reply window** (250–2,000 ms, default 500).
+5. Save settings and monitor `http://<GATEWAY-IP>/cache-stats` for `stale_hits`, `refresh_success`, `refresh_failure` and `late_rtu_dropped`.
+
+The maintainer reports successful operation with a real RTU display. A stale read is **not a live value**: do not enable this option for registers that require current safety/process data. The mode remains disabled by default. See [cache behavior](CACHE.md) for details.
 
 ### Captures réelles de l'interface Web v1.2.7 — quatre modes
 
