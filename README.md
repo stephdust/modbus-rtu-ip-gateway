@@ -273,4 +273,6 @@ Current source version: **v1.2.7** on `main` (fixed/adaptive cache TTL). The las
 
 ### ESPHome diagnostics interface (port 8080)
 
-The sample `my-modbus-gateway.yaml` uses ESPHome Web Server **v3** on port **8080**. Its `js_url` points to `web-link-entry.js` on GitHub via jsDelivr; that entry module imports the official ESPHome v3 interface and `web-link-addon.js`, turning the **Interface web** text sensor's gateway URL into a clickable link to port 80. **No local JavaScript files are required to compile.** The browser must have Internet access to load the hosted scripts (as with the default ESPHome v3 UI). The YAML also groups entities by network, gateway, system, memory and maintenance. This does not change the Modbus gateway component or its firmware version.
+The sample `my-modbus-gateway.yaml` uses ESPHome Web Server **v3**, port **8080**, and `local: true`. ESPHome embeds its official interface in the firmware, so the browser does **not** need Internet access. The YAML groups entities by network, gateway, system, memory and maintenance.
+
+The **Interface web** text sensor displays the gateway URL (port 80). It is **not yet a clickable hyperlink**: the previous GitHub CDN-based custom JavaScript was removed to guarantee offline operation. The experimental `web-link-addon.js` and `web-link-entry.js` repository files are not referenced by the current YAML. An offline, automatic custom link requires further integration and testing.
