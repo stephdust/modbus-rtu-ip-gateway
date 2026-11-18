@@ -1,3 +1,11 @@
+## 1.3.0 — Stable baseline (2026-11-18; source on `main`)
+
+- Consolidate the Modbus RTU ↔ TCP/UDP gateway and bilingual web UI.
+- Keep ESPHome's stock offline v3 web interface on port 8080, with no injected JavaScript.
+- Restore the Modbus interface URL text sensor by publishing from the ESPHome Wi-Fi IP sensor when its value changes.
+- Preserve the gateway's own configuration and diagnostics UI on port 80.
+- Version promoted following user confirmation that the IP display now works. No new hardware or compilation validation performed for this version bump.
+
 ## 1.2.9 — English Web UI translation fixes (2026-11-18; source on `main`, not yet released)
 
 - Complete English labels and descriptions for TTL settings, status/connections, counters, diagnostics and frame panels.
