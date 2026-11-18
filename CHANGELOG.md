@@ -1,3 +1,10 @@
+## 1.2.9 — English Web UI translation fixes (2026-11-18; source on `main`, not yet released)
+
+- Complete English labels and descriptions for TTL settings, status/connections, counters, diagnostics and frame panels.
+- Translate the Refresh action and fix the TCP/UDP diagnostics caption.
+- Use explicit `data-fr`/`data-en` text for elements that already declare both languages.
+- No Modbus protocol changes. Compilation and hardware verification pending.
+
 ## 1.2.8 — Safe recovery of stale persistent TCP connections (2026-11-18; source on `main`, not yet released)
 
 - In TCP Client mode with persistent connections enabled, if a reused socket fails during request write, disconnects before the full reply, or times out waiting for the reply, reconnect and retry the original Modbus read **once** for function codes **03** (holding registers) and **04** (input registers).
