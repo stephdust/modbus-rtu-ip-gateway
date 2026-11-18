@@ -88,7 +88,7 @@ The setting is saved across restarts. It does not suppress CRC errors or other t
 
 ### Response cache (mode-specific)
 
-The cache control follows the selected mode: **TCP Client** shows only the Client cache switch, while **TCP Server** shows only the Server cache switch. Switching modes changes the visible option immediately. The two settings are independent: saving one mode does not overwrite the other mode's hidden setting. The shared TTL is configurable from 50 to 10,000 ms (default 500 ms). Both caches are disabled by default. See [Cache behavior and configuration](CACHE.md) before enabling caching on a process where stale values could be unsafe.
+The cache control follows the selected mode: **TCP Client** shows only the Client cache switch, while **TCP Server** shows only the Server cache switch. Switching modes changes the visible option immediately. The two settings are independent: saving one mode does not overwrite the other mode's hidden setting. When the active cache is enabled, choose **Fixed TTL** (50–10,000 ms, default 500 ms) or **Adaptive TTL**. Adaptive mode estimates each request's polling interval and sets TTL to 80% of that interval, bounded to 50–10,000 ms; the fixed value is the initial fallback. The selector is saved in NVS. This addition is on `main` after the v1.2.1 release and has not yet been compiled or hardware-validated. Both caches are disabled by default. See [Cache behavior and configuration](CACHE.md) before enabling caching on a process where stale values could be unsafe.
 
 
 ### Aperçus de l'interface Web v1.2.1 — simulations
@@ -192,6 +192,6 @@ In Section **1. Modbus IP**, choose **Transport = TCP** or **UDP** and **Mode = 
 
 The network host, port and timeout settings apply to the selected transport. UDP Client requires a numeric IPv4 destination. UDP does not establish or maintain a connection and does not guarantee delivery. **Persistent TCP connection** appears only in **TCP Client**; it is hidden in TCP Server and both UDP modes. Its saved value is retained when switching away from TCP.
 
-The **Client** and **Server** cache checkboxes follow the selected mode, regardless of transport. The **cache TTL (ms)** field appears only if the selected mode's cache is enabled; disabling the cache hides the TTL without deleting the saved value. See [Cache behavior](CACHE.md) and [UDP development details](TCP_UDP_DEVELOPMENT.md).
+The **Client** and **Server** cache checkboxes follow the selected mode, regardless of transport. The **TTL mode** selector appears only if the selected mode's cache is enabled. **Fixed TTL** shows the numeric TTL (ms) input; **Adaptive TTL** hides that numeric input while preserving its value as a fallback. Disabling the cache hides both controls without erasing saved settings. See [Cache behavior](CACHE.md) and [UDP development details](TCP_UDP_DEVELOPMENT.md).
 
 The earlier TCP-specific examples and screenshots in this guide remain valid for TCP, but should not be interpreted as excluding UDP.
