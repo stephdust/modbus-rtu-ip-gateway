@@ -17,6 +17,17 @@ In **TCP Client** or **UDP Client**, only the **Client cache** switch is shown; 
 
 For current UI simulations (not real screenshots), see the [four-mode interface gallery](QUICK_START.md#aperçus-de-linterface-web-v121--simulations).
 
+## TTL modes: fixed or adaptive
+
+The Web interface offers a **TTL mode** selector whenever the active Client/Server cache is enabled:
+
+- **Fixed TTL** (default, backward compatible): manually enter a TTL from 50 to 10,000 ms (default 500 ms).
+- **Adaptive TTL**: estimate the polling interval separately for each cache key (direction, Unit ID, function, start address and quantity), then choose a TTL of 80% of the observed interval, bounded to 50–10,000 ms. Until an interval has been observed, the configured fixed TTL is used as a fallback.
+
+The selected TTL mode is saved in ESP32 NVS. Adaptive estimates are held only in RAM and reset when the cache is cleared. The age of a cached response is always measured from the time it was fetched, never from a cache hit. Writes continue to invalidate affected cached reads.
+
+**Important:** Adaptive TTL reduces unnecessary refreshes for repeated reads, but cannot guarantee fresh values if device data changes between polls. For safety-critical or rapidly changing registers, disable the cache or use a short fixed TTL. Adaptive behavior should be validated with the actual polling workload and device before production use.
+
 ## Time-to-live and capacity
 
 A shared TTL setting applies to both directions. It can be set from **50 to 10,000 ms**; the default is **500 ms**. The cache holds up to **64 entries**. A cache hit does not refresh the stored timestamp, so frequently repeated reads cannot keep old data alive indefinitely. Entries expire relative to the time the response was actually fetched from the remote device.
