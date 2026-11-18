@@ -1,6 +1,6 @@
 # Modbus RTU/IP Gateway — TCP and UDP implementation
 
-Version **1.2.7** on **`main`** includes TCP and UDP Client/Server transport modes. The earlier TCP-only v1.1.15 is part of the repository history; this document originated on the feature branch and now describes the merged implementation.
+The TCP/UDP Client and Server modes introduced in earlier versions are also present in current **v1.3.2 source** on **`main`**. The TCP-only v1.1.15 and the v1.2.7 interface examples are historical milestones; this document describes the merged behavior.
 
 ## Configuration
 
@@ -8,7 +8,7 @@ In the custom component YAML, use `transport: TCP` (default) or `transport: UDP`
 
 - **UDP Client**: incoming Modbus RTU requests are encoded as MBAP datagrams and forwarded to the configured IPv4 server. Replies are accepted only from the configured IP/port with matching transaction and Unit IDs. No automatic retries are performed.
 - **UDP Server**: binds the configured port, validates one complete MBAP ADU per datagram, forwards it to the RTU bus, and sends the reply to the source IP/port. Automatic RTU ID mode uses the MBAP Unit ID; manual mode overrides it. The MBAP Unit ID in the response remains the original value.
-- **Cache**: the existing client/server read caches are shared across the selected transport, and writes invalidate matching entries. Version 1.2.7 includes a Fixed/Adaptive TTL selector (adaptive = 80% of observed per-request polling interval, bounded to 50–10,000 ms); this change has not yet been compiled or tested on hardware.
+- **Cache**: the existing client/server read caches are shared across the selected transport, and writes invalidate matching entries. Fixed/Adaptive TTL is available (adaptive = 80% of the observed per-request polling interval, bounded to 50–10,000 ms); conventional cache responses have been observed in user-provided gateway logs. The optional bounded TCP Client background refresh added in v1.3.2 remains to be compiled and field-tested.
 - **TCP**: remains the default transport.
 
 ## Validation status (15 November 2026)
@@ -33,13 +33,13 @@ The header uses the RTU ↔ IP gateway artwork with caches on both sides. The fo
 
 ## État du développement (français)
 
-La branche a été compilée et installée sur ESP32-S3. Selon les essais communiqués par l'utilisateur, les **quatre modes TCP/UDP Client/Serveur fonctionnent**, y compris les lectures FC03/04, écritures FC06/16, ID RTU automatique/manuel et cache en UDP. Les tests de robustesse restent à effectuer. La version TCP/UDP v1.2.1 a été publiée. Le code v1.2.7 sur `main` ajoute le TTL adaptatif, qui reste à compiler et valider.
+La branche a été compilée et installée sur ESP32-S3. Selon les essais communiqués par l'utilisateur, les **quatre modes TCP/UDP Client/Serveur fonctionnent**, y compris les lectures FC03/04, écritures FC06/16, ID RTU automatique/manuel et cache en UDP. Les tests de robustesse restent à effectuer. La version TCP/UDP v1.2.1 a été publiée. Le code actuel sur `main` est en version source v1.3.2. Les traces de la passerelle ont confirmé le fonctionnement du cache TTL classique ; le rafraîchissement TCP en arrière-plan introduit en v1.3.2 n'a pas encore été validé sur l'afficheur physique.
 
 Dans l'interface, **Connexion TCP persistante** est affichée uniquement en **TCP Client** et masquée en TCP Serveur, UDP Client et UDP Serveur ; le changement est immédiat. Le réglage TCP enregistré est conservé lors du passage en UDP. Les quatre petits logos sont harmonisés avec le logo principal, et le pictogramme Modbus IP indique désormais **TCP/UDP**.
 
 
-> **Web UI v1.2.7:** The Mode selector is transport-neutral: **Client (RTU → IP)** or **Server (IP → RTU)**. Choose **TCP** or **UDP** independently in Transport. The documentation gallery uses v1.2.7 screenshots.
+> **Historical Web UI gallery:** v1.2.7 screenshots show the transport-neutral Client/Server selector and precede the optional v1.3.2 background cache refresh controls.
 
 ## Persistent TCP connection recovery (source v1.2.8)
 
-For TCP Client mode with the persistent option enabled, a request on a reused connection may encounter a peer-closed socket. On TCP write failure, connection closure while waiting for a full response, or response timeout, the gateway makes at most one new connection and retries the original read only for Modbus FC03/FC04. A `TCP RETRY` event identifies this recovery. Failed retries use the existing RTU exception or silent-timeout handling. No replay is performed for writes or UDP requests. The implementation is committed to `main`; compilation and hardware validation are pending.
+For TCP Client mode with the persistent option enabled, a request on a reused connection may encounter a peer-closed socket. On TCP write failure, connection closure while waiting for a full response, or response timeout, the gateway makes at most one new connection and retries the original read only for Modbus FC03/FC04. A `TCP RETRY` event identifies this recovery. Failed retries use the existing RTU exception or silent-timeout handling. No replay is performed for writes or UDP requests. The implementation is committed to `main`. Existing persistent TCP reuse and RTU/TCP exchanges have been observed in gateway logs; independent stress and regression testing remains advisable.
