@@ -70,7 +70,7 @@ def _install_offline_gateway_link():
         header = Path(web_server.__file__).with_name("server_index_v3.h")
         source = header.read_text(encoding="utf-8")
         match = re.search(
-            r"#ifdef USE_WEBSERVER_GZIP\\s+constexpr uint8_t INDEX_GZ\\[\\] PROGMEM = \\{(.*?)\\};",
+            r"#ifdef USE_WEBSERVER_GZIP\s+constexpr uint8_t INDEX_GZ\[\] PROGMEM = \{(.*?)\};",
             source,
             flags=re.S,
         )
