@@ -196,10 +196,22 @@ sensor:
         sorting_group_id: grp_memory
         sorting_weight: 30
     cpu_frequency:
-      name: "Fréquence CPU"
-      web_server:
-        sorting_group_id: grp_memory
-        sorting_weight: 40
+      name: "Fréquence CPU brute"
+      id: cpu_frequency_hz
+      internal: true
+
+  # Display MHz explicitly rather than relying on automatic Hz/kHz scaling.
+  - platform: copy
+    source_id: cpu_frequency_hz
+    name: "Fréquence CPU"
+    filters:
+      - multiply: 0.000001
+    unit_of_measurement: "MHz"
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    web_server:
+      sorting_group_id: grp_memory
+      sorting_weight: 40
     loop_time:
       name: "Temps de boucle ESP32"
       web_server:
