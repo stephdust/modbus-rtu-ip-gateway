@@ -289,7 +289,7 @@ class ModbusGateway : public Component {
     if (pdu.size() != 5 || pdu[0] < 1 || pdu[0] > 4) return false;
     start_address = (uint16_t(pdu[1]) << 8) | pdu[2];
     quantity = (uint16_t(pdu[3]) << 8) | pdu[4];
-    if (quantity == 0) return false;
+    if (quantity == 0 || uint32_t(start_address) + quantity > 65536UL) return false;
     if ((pdu[0] == 1 || pdu[0] == 2) && quantity > 2000) return false;
     if ((pdu[0] == 3 || pdu[0] == 4) && quantity > 125) return false;
     return true;
@@ -300,11 +300,12 @@ class ModbusGateway : public Component {
     uint16_t start_address = 0;
     uint16_t quantity = 0;
     if (!is_cacheable_read_request_(request_pdu, start_address, quantity)) return false;
-    if (response_pdu.size() < 3 || response_pdu.size() > RESPONSE_CACHE_MAX_PDU) return false;
-    if (response_pdu[0] != request_pdu[0]) return false;  // excludes Modbus exceptions
-    const size_t expected_bytes = (request_pdu[0] == 1 || request_pdu[0] == 2)
-        ? size_t((quantity + 7) / 8) : size_t(quantity) * 2;
-    return response_pdu[1] == expected_bytes && response_pdu.size() == expected_bytes + 2;
+    if (response_pdu.size() > RESPONSE_CACHE_MAX_PDU) return false;
+    // Same strict validator used when deciding whether an RTU reply is
+    // eligible to cross to TCP/UDP. Exceptions and malformed PDU lengths
+    // can never populate the response cache.
+    return gateway_policy::is_success(request_pdu.data(), request_pdu.size(),
+                                      response_pdu.data(), response_pdu.size());
   }
 
   static uint32_t adaptive_ttl_(uint32_t interval_ms) {
