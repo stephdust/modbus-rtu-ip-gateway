@@ -655,9 +655,7 @@ class ModbusGateway : public Component {
   }
 
   static bool valid_crc_(const uint8_t *frame, size_t len) {
-    if (len < 4) return false;
-    uint16_t c = uint16_t(frame[len-2]) | (uint16_t(frame[len-1]) << 8);
-    return c == crc16_(frame, len-2);
+    return gateway_policy::valid_rtu_crc(frame, len);
   }
 
   static String crc_diagnostic_(const uint8_t *frame, size_t len) {
@@ -1381,12 +1379,11 @@ class ModbusGateway : public Component {
       const size_t rlen = expected_rtu_response_(pdu[0], pdu.data(), pdu.size(),
                                                  response, sizeof(response),
                                                  first_delay, response_span);
-      const bool crc_ok = rlen >= 5 && valid_crc_(response, rlen);
-      const bool unit_ok = crc_ok && response[0] == unit;
-      const bool success = unit_ok && gateway_policy::is_success(
-          pdu.data(), pdu.size(), response + 1, rlen - 3U);
-      const bool exception = unit_ok && gateway_policy::is_exception(
-          pdu.data(), pdu.size(), response + 1, rlen - 3U);
+      // CRC is the FIRST gate. A bad-CRC frame is never forwarded or cached.
+      const gateway_policy::RtuReply reply_kind = gateway_policy::classify_rtu_reply(
+          unit, pdu.data(), pdu.size(), response, rlen);
+      const bool success = reply_kind == gateway_policy::RtuReply::Success;
+      const bool exception = reply_kind == gateway_policy::RtuReply::Exception;
       if (success || exception) {
         add_log_("RTU RX", response, rlen);
         if (exception && silent_on_timeout_) {
@@ -1402,7 +1399,7 @@ class ModbusGateway : public Component {
         }
       } else {
         if (rlen >= 5) {
-          ++crc_error_count_;
+          if (!valid_crc_(response, rlen)) ++crc_error_count_;
           add_log_("RTU RX", response, rlen);
           add_event_("RTU ERROR", "Invalid RTU frame: CRC, Unit ID, function, length or byte count.");
         } else {
@@ -1665,12 +1662,11 @@ class ModbusGateway : public Component {
     const size_t rlen = expected_rtu_response_(pdu[0], pdu.data(), pdu.size(), response, sizeof(response),
                                                rtu_first_byte_us, rtu_response_span_us);
     rtu_response_wait_us = micros() - rtu_wait_started_us;
-    const bool crc_ok = rlen >= 5 && valid_crc_(response, rlen);
-    const bool unit_ok = crc_ok && response[0] == unit;
-    const bool success = unit_ok && gateway_policy::is_success(
-        pdu.data(), pdu.size(), response + 1, rlen - 3U);
-    const bool exception = unit_ok && gateway_policy::is_exception(
-        pdu.data(), pdu.size(), response + 1, rlen - 3U);
+    // CRC is the FIRST gate. A bad-CRC frame is never forwarded or cached.
+    const gateway_policy::RtuReply reply_kind = gateway_policy::classify_rtu_reply(
+        unit, pdu.data(), pdu.size(), response, rlen);
+    const bool success = reply_kind == gateway_policy::RtuReply::Success;
+    const bool exception = reply_kind == gateway_policy::RtuReply::Exception;
     if (success || exception) {
       add_log_("RTU RX", response, rlen);
       if (exception && silent_on_timeout_) {
@@ -1709,18 +1705,20 @@ class ModbusGateway : public Component {
       }
     } else {
       if (rlen >= 5) {
-        // The RTU slave answered, but a corrupt frame must never reach the TCP client
-        // or response cache. Keep the raw frame in the trace so the UI marks its CRC.
-        ++crc_error_count_;
+        // Discard every invalid frame before output/cache; distinguish a
+        // malformed PDU or wrong Unit ID from an actual CRC mismatch.
+        const bool bad_crc = !valid_crc_(response, rlen);
+        if (bad_crc) ++crc_error_count_;
         add_log_("RTU RX", response, rlen);
         const String crc_detail = crc_diagnostic_(response, rlen);
-        add_event_("CRC ERROR", String("Server mode | RTU response discarded; RTU Unit ID=") +
+        add_event_(bad_crc ? "CRC ERROR" : "RTU ERROR",
+                   String("Server mode | RTU response discarded; RTU Unit ID=") +
                    String(unit) + "; Function=" + String(pdu[0]) +
                    "; bytes=" + String(rlen) + "; " + crc_detail +
                    "; total CRC errors=" + String(crc_error_count_) +
                    (silent_on_timeout_ ? ". Silent mode: no TCP reply." :
                                          ". TCP gateway exception 0x0B returned."));
-        ESP_LOGW("modbus_gateway", "Discarded RTU response with invalid CRC (%s)", crc_detail.c_str());
+        ESP_LOGW("modbus_gateway", "Discarded invalid RTU response (%s)", crc_detail.c_str());
       } else {
         add_event_("RTU ERROR", String("Server mode | No complete RTU response; Unit ID=") +
                    String(unit) + "; Function=" + String(pdu[0]) +
