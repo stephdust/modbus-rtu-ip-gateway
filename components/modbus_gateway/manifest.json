@@ -1,6 +1,6 @@
 {
   "name": "Modbus RTU-IP (TCP/UDP) Gateway with Web UI",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "dependencies": [],
   "codeowners": [],
   "requirements": []
