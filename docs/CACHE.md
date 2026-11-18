@@ -66,6 +66,9 @@ Non-overlapping ranges and read-only spaces (`02` Discrete Inputs and `04` Input
 
 ## Diagnostics
 
+The **Counters / Diagnostics** dashboard now includes **Cache (entries)** and **Effective TTL**. When the cache for the selected Client/Server mode is disabled, the count is `0 / 64`; when enabled, it counts only unexpired entries for that direction. The TTL field shows the current minimum–maximum TTL among valid entries (or a single value when equal). An empty cache shows `—` for TTL. Both values refresh with the Web frame diagnostics, allowing the user to observe adaptive TTL changes as the cache fills. This is cache occupancy (entries), not RAM usage in bytes; it is not a guarantee that device values changed or that adaptive behavior is optimal.
+
+
 The frame diagnostics and `.txt` export show cache events:
 
 - `CACHE MISS` – no valid matching entry was found; the request is sent to the remote device.
