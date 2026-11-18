@@ -62,6 +62,47 @@ inline bool cache_expired(uint32_t now_ms, uint32_t stored_at_ms, uint32_t ttl_m
   return uint32_t(now_ms - stored_at_ms) >= ttl_ms;
 }
 
+// Select the newest existing entry for a key BEFORE considering a free
+// slot. This also removes duplicate keys left by earlier firmware versions.
+// Entries hold only POD metadata, so this is allocation-free and host-testable.
+template <typename Entry>
+inline Entry* cache_store_slot(Entry* entries, size_t count, uint32_t now_ms,
+                               uint8_t direction, uint8_t unit_id,
+                               uint8_t function_code, uint16_t address,
+                               uint16_t quantity, bool adaptive,
+                               uint32_t fixed_ttl_ms) {
+  if (!entries) return nullptr;
+  Entry* matching = nullptr;
+  Entry* vacant = nullptr;
+  Entry* oldest = nullptr;
+  uint32_t oldest_age = 0;
+  for (size_t i = 0; i < count; ++i) {
+    Entry& entry = entries[i];
+    if (entry.valid && cache_expired(
+            now_ms, entry.stored_at_ms,
+            adaptive ? entry.ttl_ms : fixed_ttl_ms))
+      entry.valid = false;
+    if (entry.valid && entry.direction == direction && entry.unit_id == unit_id &&
+        entry.function_code == function_code && entry.start_address == address &&
+        entry.quantity == quantity) {
+      // If old firmware created duplicates, keep the freshest response.
+      if (!matching ||
+          uint32_t(now_ms - entry.stored_at_ms) <
+              uint32_t(now_ms - matching->stored_at_ms)) {
+        if (matching) matching->valid = false;
+        matching = &entry;
+      } else entry.valid = false;
+      continue;
+    }
+    if (!entry.valid && !vacant) vacant = &entry;
+    if (entry.valid) {
+      const uint32_t age = uint32_t(now_ms - entry.stored_at_ms);
+      if (!oldest || age > oldest_age) { oldest = &entry; oldest_age = age; }
+    }
+  }
+  return matching ? matching : (vacant ? vacant : oldest);
+}
+
 }  // namespace gateway_policy
 }  // namespace modbus_gateway
 }  // namespace esphome
