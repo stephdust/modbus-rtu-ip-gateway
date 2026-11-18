@@ -88,7 +88,7 @@ The setting is saved across restarts. It does not suppress CRC errors or other t
 
 ### Response cache (mode-specific)
 
-The cache control follows the selected mode: **TCP Client** shows only the Client cache switch, while **TCP Server** shows only the Server cache switch. Switching modes changes the visible option immediately. The two settings are independent: saving one mode does not overwrite the other mode's hidden setting. When the active cache is enabled, choose **Fixed TTL** (50–10,000 ms, default 500 ms) or **Adaptive TTL**. Adaptive mode estimates each request's polling interval and sets TTL to 80% of that interval, bounded to 50–10,000 ms; the fixed value is the initial fallback. The selector is saved in NVS. This addition is part of the v1.2.6 source on `main` and has not yet been compiled or hardware-validated. Both caches are disabled by default. See [Cache behavior and configuration](CACHE.md) before enabling caching on a process where stale values could be unsafe.
+The cache control follows the selected mode: **TCP Client** shows only the Client cache switch, while **TCP Server** shows only the Server cache switch. Switching modes changes the visible option immediately. The two settings are independent: saving one mode does not overwrite the other mode's hidden setting. When the active cache is enabled, choose **Fixed TTL** (50–10,000 ms, default 500 ms) or **Adaptive TTL**. Adaptive mode estimates each request's polling interval and sets TTL to 80% of that interval, bounded to 50–10,000 ms; the fixed value is the initial fallback. The selector is saved in NVS. This addition is part of the v1.2.7 source on `main` and has not yet been compiled or hardware-validated. Both caches are disabled by default. See [Cache behavior and configuration](CACHE.md) before enabling caching on a process where stale values could be unsafe.
 
 
 ### Captures réelles de l'interface Web v1.2.7 — quatre modes
@@ -240,18 +240,8 @@ Invalid RTU CRC frames are discarded before forwarding or cache storage. The Web
 
 The diagnostics also report per-stage timing and receive-byte observations. These are software timestamps from the ESP32, not oscilloscope measurements. See [Latency diagnostics](LATENCY_DIAGNOSTICS.md).
 
-## Reference screenshot: actual Web UI v1.2.6
 
-The maintainer provided a four-page capture of the **actual** French Web interface. It is the visual reference for future documentation illustrations. The four pages cover:
-
-1. **Header and Modbus IP** — gateway artwork, version, operating mode, transport, server address and port, timeout, persistent TCP connection, timeout behavior, Client cache enablement, fixed/adaptive TTL and explanatory text.
-2. **Modbus RTU, Configuration and Status** — baud, data bits, parity, stop bits, GPIO TX/RX/DE-RE, gateway and Wi-Fi status, destination TCP, connection count and connections table.
-3. **Counters and manual transmission** — RTU RX/TX, IP RX/TX, valid cache entries and effective TTL; separate manual Modbus IP frame input, send button and response inside the same panel.
-4. **Frame capture and footer** — RTU listening, clear and TXT export buttons, active listening status, color-coded log and bottom theme/language/save/restart/refresh controls.
-
-**Image provenance:** the four SVGs linked below are *simulations*, not these actual screenshots. The source PDF is user-provided and is not hosted in this repository; it must not be represented as an actual browser screenshot. Replace the simulations with real PNG images only after the screenshots are uploaded to this repository.
-
-## TCP / UDP configuration (v1.2.6)
+## TCP / UDP configuration (v1.2.7)
 
 **Required compatibility check:** Configure the gateway's IP transport to match the remote Modbus IP endpoint: **TCP Client ↔ TCP Server** or **UDP Client ↔ UDP Server**. TCP and UDP are different transport protocols, even when both endpoints use port **502**. A TCP client cannot exchange Modbus requests with a UDP-only server, and vice versa. For the gateway's **IP Server** mode, the external IP client must likewise select the matching TCP or UDP transport.
 
@@ -272,4 +262,4 @@ The **Client** and **Server** cache checkboxes follow the selected mode, regardl
 The earlier TCP-specific examples and screenshots in this guide remain valid for TCP, but should not be interpreted as excluding UDP.
 
 
-> **Web UI v1.2.7:** The Mode selector is transport-neutral: **Client (RTU → IP)** or **Server (IP → RTU)**. Choose **TCP** or **UDP** independently in Transport. Earlier v1.2.6 screenshots remain historical references and may display older labels.
+> **Web UI v1.2.7:** The Mode selector is transport-neutral: **Client (RTU → IP)** or **Server (IP → RTU)**. Choose **TCP** or **UDP** independently in Transport. The screenshots above show the current v1.2.7 labels.
