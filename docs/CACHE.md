@@ -78,6 +78,51 @@ The frame diagnostics and `.txt` export show cache events:
 
 On a cache hit, Client mode sends the cached PDU back over RTU. Server mode creates a fresh TCP MBAP header using the current request's Transaction ID and TCP Unit ID, and does not transmit anything on RS-485 for that request.
 
+## Bounded stale-while-revalidate (v1.3.2)
+
+In **TCP Client (RTU → TCP)** mode, enable **Client cache**, keep
+**Persistent TCP connection** enabled, then select
+**Client cache: respond immediately and refresh in background**.
+This new feature is **disabled by default**. TCP Server, UDP Client and
+UDP Server retain their previous cache behavior.
+
+1. **Fresh hit:** reply immediately with the last validated read PDU.
+2. **Stale hit:** if the entry is older than the fixed/adaptive TTL but below
+   the maximum data age, reply immediately with the last validated PDU,
+   and trigger a single background TCP refresh. On successful validation,
+   the cache is updated **without transmitting another RTU frame**.
+3. **Cache miss or age exceeded:** do not use old data. The gateway performs
+   a foreground TCP transaction. A late RTU reply is dropped if its complete
+   serial transmission cannot fit within the configured RTU reply window.
+4. While a background refresh is pending, cached RTU requests continue to
+   receive immediate answers. An uncached foreground request closes the
+   background TCP socket before starting its own transaction.
+5. Refresh starts are rate-limited to one per second. A failed refresh
+   never generates an RTU error/exception frame.
+
+**Configurable bounds:** maximum data age 1,000–30,000 ms (default 10,000),
+and RTU reply window 250–2,000 ms (default 500). The maximum age is measured
+from the **most recent validated TCP response**, never from a cache hit.
+An RTU reply deadline includes the whole on-wire response at the configured
+baud/parity/data/stop bits plus a guard. The timer is anchored to the
+last captured RTU request byte, not to deferred parsing time.
+
+The response cache is still restricted to structurally valid Modbus read
+responses (FC01–FC04), including the function and byte count checks.
+Exceptions, invalid PDU shapes, RTU CRC errors and failed transactions are
+never cached. Writes invalidate relevant entries. **Do not enable** stale
+serving for measurements that require always-current process/safety values.
+
+**Diagnostics:** `GET /cache-stats` now also reports `swr_enabled`,
+`max_age_ms`, `rtu_window_ms`, `stale_entries`,
+`fresh_hits`, `stale_hits`, `refresh_pending`, `refresh_started`,
+`refresh_success`, `refresh_failure`, and `late_rtu_dropped`.
+Logs include `CACHE STALE`, `CACHE REFRESH`, `CACHE REFRESH OK`,
+`CACHE REFRESH ERROR` and `RTU DEADLINE`.
+
+This implementation is source- and host-test-reviewed but still requires an
+ESPHome compilation and validation with the real display and RS485 bus.
+
 ## Data freshness warning
 
 A cache hit intentionally returns a previous valid device response. The data can be as old as the applicable fixed or adaptive TTL. Choose a TTL appropriate for the process and its update rate. If stale data is unsafe or unacceptable, leave the corresponding mode's cache disabled. The cache is a performance option, not a substitute for device-side update timing or application-level freshness checks.
