@@ -91,50 +91,91 @@ The setting is saved across restarts. It does not suppress CRC errors or other t
 The cache control follows the selected mode: **TCP Client** shows only the Client cache switch, while **TCP Server** shows only the Server cache switch. Switching modes changes the visible option immediately. The two settings are independent: saving one mode does not overwrite the other mode's hidden setting. When the active cache is enabled, choose **Fixed TTL** (50–10,000 ms, default 500 ms) or **Adaptive TTL**. Adaptive mode estimates each request's polling interval and sets TTL to 80% of that interval, bounded to 50–10,000 ms; the fixed value is the initial fallback. The selector is saved in NVS. This addition is part of the v1.2.6 source on `main` and has not yet been compiled or hardware-validated. Both caches are disabled by default. See [Cache behavior and configuration](CACHE.md) before enabling caching on a process where stale values could be unsafe.
 
 
-### Captures réelles de l'interface Web v1.2.6 — mode TCP Client
+### Captures réelles de l'interface Web v1.2.7 — quatre modes
 
-Les quatre images suivantes proviennent de la capture fournie depuis l'interface réelle de l'ESP32-S3. Elles montrent **un seul état de configuration : TCP Client**, et non quatre modes différents. Les adresses IP, compteurs, statuts et trames affichés correspondent à cet exemple et peuvent différer sur ton installation.
+Ces **16 captures réelles** proviennent de l'interface ESP32-S3 en version **1.2.7**, et remplacent les anciennes captures v1.2.6 et les simulations SVG. Les valeurs (IP, états, trames, compteurs) sont des exemples observés, pas des résultats de validation exhaustive. Les modes **Client / Serveur** sont indépendants du transport **TCP / UDP**.
 
-**1. Bandeau et configuration Modbus IP** — mode Client TCP, adresse et port, timeout réseau, connexion persistante, cache activé et TTL adaptatif.
+#### TCP Client — RTU vers serveur TCP
 
-![Capture réelle v1.2.6 — bandeau et Modbus IP](assets/01_modbus_ip.png)
+Connexion TCP persistante optionnelle, cache Client et TTL adaptatif, connexions et journal des erreurs TCP.
 
-**2. Paramètres Modbus RTU, GPIO et état des connexions** — paramètres série, configuration matérielle, Wi-Fi et tableau des connexions IP.
+**1. Configuration Modbus IP et bandeau**
 
-![Capture réelle v1.2.6 — RTU, configuration et connexions](assets/02_rtu_configuration_connexions.png)
+![v1.2.7 — TCP Client — RTU vers serveur TCP — Configuration Modbus IP et bandeau](assets/v1.2.7-tcp-client-01.png)
 
-**3. Compteurs, cache et envoi manuel** — RTU/IP RX/TX, occupation du cache, TTL effectif, envoi d'une trame et réponse dans le même encart.
+**2. Paramètres RTU, GPIO et état des connexions**
 
-![Capture réelle v1.2.6 — diagnostics et envoi manuel](assets/03_diagnostics_envoi_manuel.png)
+![v1.2.7 — TCP Client — RTU vers serveur TCP — Paramètres RTU, GPIO et état des connexions](assets/v1.2.7-tcp-client-02.png)
 
-**4. Écoute des trames et commandes** — arrêt/reprise de l'écoute, effacement, export TXT, journal coloré et barre d'actions inférieure.
+**3. Compteurs / Diagnostics et envoi manuel**
 
-![Capture réelle v1.2.6 — journal et actions](assets/04_ecoute_trames_actions.png)
+![v1.2.7 — TCP Client — RTU vers serveur TCP — Compteurs / Diagnostics et envoi manuel](assets/v1.2.7-tcp-client-03.png)
 
-Les anciennes simulations SVG ne sont plus utilisées dans cette présentation. Les captures documentent des états de configuration observés, sans constituer une validation de tous les scénarios réseau.
+**4. Écoute des trames, journal et commandes**
 
+![v1.2.7 — TCP Client — RTU vers serveur TCP — Écoute des trames, journal et commandes](assets/v1.2.7-tcp-client-04.png)
 
-### Captures réelles de l'interface Web v1.2.6 — mode TCP Serveur
+#### TCP Serveur — clients TCP vers RTU
 
-Les quatre images suivantes proviennent de la capture fournie en **mode TCP Serveur (TCP → RTU)**. Elles illustrent la configuration du port local **502**, le cache Serveur avec **TTL adaptatif**, les paramètres série **9600 8N1** et les diagnostics. La capture montre également une destination TCP `192.168.1.71:502` indiquée **déconnectée** dans le panneau d'état : cet affichage ne doit pas être interprété comme une connexion entrante active. Les valeurs et messages sont ceux de cette session, pas des valeurs garanties.
+Port d'écoute 502, clients TCP (jusqu'à quatre affichés), paramètres RTU et diagnostics.
 
-**1. Bandeau et Modbus IP (Serveur)** — mode TCP Serveur, port 502, timeout réseau, comportement silencieux sur timeout et TTL adaptatif.
+**1. Configuration Modbus IP et bandeau**
 
-![Capture réelle v1.2.6 — TCP Serveur, Modbus IP](assets/05_tcp_serveur_modbus_ip.png)
+![v1.2.7 — TCP Serveur — clients TCP vers RTU — Configuration Modbus IP et bandeau](assets/v1.2.7-tcp-serveur-01.png)
 
-**2. Paramètres RTU, GPIO et connexions** — ID RTU automatique, GPIO 17/18/21, état Wi-Fi et tableau des connexions.
+**2. Paramètres RTU, GPIO et état des connexions**
 
-![Capture réelle v1.2.6 — TCP Serveur, RTU et connexions](assets/06_tcp_serveur_rtu_connexions.png)
+![v1.2.7 — TCP Serveur — clients TCP vers RTU — Paramètres RTU, GPIO et état des connexions](assets/v1.2.7-tcp-serveur-02.png)
 
-**3. Compteurs et envoi manuel** — six indicateurs, cache à 0 / 64, TTL effectif non renseigné et panneau de réponse à une requête manuelle.
+**3. Compteurs / Diagnostics et envoi manuel**
 
-![Capture réelle v1.2.6 — TCP Serveur, diagnostics et envoi manuel](assets/07_tcp_serveur_diagnostics_manuel.png)
+![v1.2.7 — TCP Serveur — clients TCP vers RTU — Compteurs / Diagnostics et envoi manuel](assets/v1.2.7-tcp-serveur-03.png)
 
-**4. Écoute RTU / IP et actions** — commandes de capture, journal RTU/TCP avec erreurs de connexion, export TXT et barre d'actions.
+**4. Écoute des trames, journal et commandes**
 
-![Capture réelle v1.2.6 — TCP Serveur, journal et actions](assets/08_tcp_serveur_journal_actions.png)
+![v1.2.7 — TCP Serveur — clients TCP vers RTU — Écoute des trames, journal et commandes](assets/v1.2.7-tcp-serveur-04.png)
 
-Les modes **UDP Client** et **UDP Serveur** ne sont pas représentés par ces captures TCP.
+#### UDP Client — RTU vers serveur UDP
+
+Destination UDP, cache Client adaptatif, compteur IP TX et journal des timeouts UDP.
+
+**1. Configuration Modbus IP et bandeau**
+
+![v1.2.7 — UDP Client — RTU vers serveur UDP — Configuration Modbus IP et bandeau](assets/v1.2.7-udp-client-01.png)
+
+**2. Paramètres RTU, GPIO et état des connexions**
+
+![v1.2.7 — UDP Client — RTU vers serveur UDP — Paramètres RTU, GPIO et état des connexions](assets/v1.2.7-udp-client-02.png)
+
+**3. Compteurs / Diagnostics et envoi manuel**
+
+![v1.2.7 — UDP Client — RTU vers serveur UDP — Compteurs / Diagnostics et envoi manuel](assets/v1.2.7-udp-client-03.png)
+
+**4. Écoute des trames, journal et commandes**
+
+![v1.2.7 — UDP Client — RTU vers serveur UDP — Écoute des trames, journal et commandes](assets/v1.2.7-udp-client-04.png)
+
+#### UDP Serveur — requêtes UDP vers RTU
+
+Port UDP local 502, absence de session persistante, configuration RTU et journal de capture.
+
+**1. Configuration Modbus IP et bandeau**
+
+![v1.2.7 — UDP Serveur — requêtes UDP vers RTU — Configuration Modbus IP et bandeau](assets/v1.2.7-udp-serveur-01.png)
+
+**2. Paramètres RTU, GPIO et état des connexions**
+
+![v1.2.7 — UDP Serveur — requêtes UDP vers RTU — Paramètres RTU, GPIO et état des connexions](assets/v1.2.7-udp-serveur-02.png)
+
+**3. Compteurs / Diagnostics et envoi manuel**
+
+![v1.2.7 — UDP Serveur — requêtes UDP vers RTU — Compteurs / Diagnostics et envoi manuel](assets/v1.2.7-udp-serveur-03.png)
+
+**4. Écoute des trames, journal et commandes**
+
+![v1.2.7 — UDP Serveur — requêtes UDP vers RTU — Écoute des trames, journal et commandes](assets/v1.2.7-udp-serveur-04.png)
+
+**Remarque :** sur certaines captures UDP, le bouton d'envoi manuel indique encore « Envoyer au serveur TCP » et les descriptions du journal mentionnent TCP. Ces libellés sont ceux de l'interface photographiée et seront à corriger séparément dans le firmware.
 
 ## 6. Configure Section 2 — Modbus RTU
 
