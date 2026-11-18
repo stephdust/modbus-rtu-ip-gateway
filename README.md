@@ -70,27 +70,27 @@ See [Cache behavior and configuration](docs/CACHE.md) for details. The cache opt
 
 ## Web interface (v1.2.6)
 
-### Aperçus de l'interface Web v1.2.6 — simulations (non captures réelles)
+### Captures réelles de l'interface Web v1.2.6 — mode TCP Client
 
-> **Illustrations simulées, et non captures réelles de l'ESP32.** Elles reprennent l'organisation actuelle (logo, barre d'actions, paramètres et tableau de connexions), avec des adresses et états d'exemple. Les vrais journaux de trames, compteurs et connexions dépendent du matériel.
+Les quatre images suivantes proviennent de la capture fournie depuis l'interface réelle de l'ESP32-S3. Elles montrent **un seul état de configuration : TCP Client**, et non quatre modes différents. Les adresses IP, compteurs, statuts et trames affichés correspondent à cet exemple et peuvent différer sur ton installation.
 
-**TCP Client (RTU → IP)**
+**1. Bandeau et configuration Modbus IP** — mode Client TCP, adresse et port, timeout réseau, connexion persistante, cache activé et TTL adaptatif.
 
-![Simulation de l'interface tcp-client v1.2.1](docs/assets/ui-v1.2.6-tcp-client-simulation.svg)
+![Capture réelle v1.2.6 — bandeau et Modbus IP](docs/assets/01_modbus_ip.png)
 
-**TCP Serveur (IP → RTU)**
+**2. Paramètres Modbus RTU, GPIO et état des connexions** — paramètres série, configuration matérielle, Wi-Fi et tableau des connexions IP.
 
-![Simulation de l'interface tcp-server v1.2.1](docs/assets/ui-v1.2.6-tcp-server-simulation.svg)
+![Capture réelle v1.2.6 — RTU, configuration et connexions](docs/assets/02_rtu_configuration_connexions.png)
 
-**UDP Client (RTU → IP)**
+**3. Compteurs, cache et envoi manuel** — RTU/IP RX/TX, occupation du cache, TTL effectif, envoi d'une trame et réponse dans le même encart.
 
-![Simulation de l'interface udp-client v1.2.1](docs/assets/ui-v1.2.6-udp-client-simulation.svg)
+![Capture réelle v1.2.6 — diagnostics et envoi manuel](docs/assets/03_diagnostics_envoi_manuel.png)
 
-**UDP Serveur (IP → RTU)**
+**4. Écoute des trames et commandes** — arrêt/reprise de l'écoute, effacement, export TXT, journal coloré et barre d'actions inférieure.
 
-![Simulation de l'interface udp-server v1.2.1](docs/assets/ui-v1.2.6-udp-server-simulation.svg)
+![Capture réelle v1.2.6 — journal et actions](docs/assets/04_ecoute_trames_actions.png)
 
-Le panneau de diagnostics des trames, situé sous les paramètres, distingue **RTU RAW** (cyan), **TCP/UDP RAW** (orange) et les mesures **TIMING** (violet). La barre d'actions sous le logo regroupe le thème, la langue, **Enregistrer / appliquer**, **Redémarrer** et **Actualiser**.
+Les anciennes simulations SVG ne sont plus utilisées dans cette présentation. Les captures ne constituent pas des preuves de fonctionnement des autres modes (TCP Serveur, UDP Client et UDP Serveur).
 
 ## Hardware
 
