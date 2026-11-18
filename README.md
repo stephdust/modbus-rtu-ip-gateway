@@ -41,6 +41,8 @@ See [Cache behavior and configuration](docs/CACHE.md) for details. The cache opt
 
 ## Features
 
+- **Live cache diagnostics (current `main`):** the Counters / Diagnostics panel displays active valid cache entries (`0 / 64` when disabled) and the effective TTL range for populated entries, updated with the frame diagnostics. The occupancy reflects the selected Client/Server direction; expired entries are excluded. This addition is not yet hardware-validated.
+
 - Per-transaction latency diagnostics in both TCP Client and TCP Server modes.
 - Non-blocking TCP response reception in normal TCP Client mode: the ESPHome loop keeps servicing the Web UI and other tasks while the remote Modbus TCP server prepares its response.
 
