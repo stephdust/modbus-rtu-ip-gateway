@@ -10,13 +10,13 @@ A Wi-Fi Modbus gateway built with **ESPHome**, **ESP32-S3** and the **Arduino fr
 
 > **Reference hardware:** [Waveshare ESP32-S3-RS485-CAN](https://docs.waveshare.com/ESP32-S3-RS485-CAN). The project defaults match this board's RS-485 signals: TX GPIO17, RX GPIO18 and RS485 enable GPIO21. The project maintainer reports successful testing with this device, including four connected Modbus TCP clients.
 
-> **Version 1.2.1 on `main`:** supports **TCP Client, TCP Server, UDP Client and UDP Server**. The maintainer reports successful functional tests of the four modes; robustness testing remains pending. See [TCP/UDP development and UI behavior](docs/TCP_UDP_DEVELOPMENT.md).
+> **Version 1.2.2 on `main`:** supports **TCP Client, TCP Server, UDP Client and UDP Server**. The maintainer reports successful functional tests of the four modes; robustness testing remains pending. See [TCP/UDP development and UI behavior](docs/TCP_UDP_DEVELOPMENT.md).
 
-### TCP/UDP web UI (v1.2.1)
+### TCP/UDP web UI (v1.2.2)
 
-The v1.2.1 interface labels the network section **Modbus IP**, offers a TCP/UDP selector, and includes four harmonized blue/cyan section thumbnails matching the RTU ↔ IP header artwork. The IP thumbnail explicitly shows **TCP / UDP**. The **Persistent TCP connection** control is displayed only for **TCP Client**; it is hidden for TCP Server and both UDP modes, and the stored TCP setting is preserved while UDP is selected.
+The v1.2.2 source interface labels the network section **Modbus IP**, offers a TCP/UDP selector, and includes four harmonized blue/cyan section thumbnails matching the RTU ↔ IP header artwork. The IP thumbnail explicitly shows **TCP / UDP**. The **Persistent TCP connection** control is displayed only for **TCP Client**; it is hidden for TCP Server and both UDP modes, and the stored TCP setting is preserved while UDP is selected.
 
-## Transport and operating modes (v1.2.1)
+## Transport and operating modes (v1.2.2)
 
 **Important — transport compatibility:** The Modbus IP client and its corresponding Modbus IP server **must use the same transport protocol**: **TCP Client ↔ TCP Server**, or **UDP Client ↔ UDP Server**. A TCP client cannot communicate directly with a UDP server, nor can a UDP client communicate directly with a TCP server. Using the same port number (for example, 502) does not make the two transports interchangeable.
 
@@ -35,7 +35,7 @@ The gateway provides two independent optional response caches, one for each **Cl
 - **IP Client mode (RTU → TCP/UDP):** repeated RTU read requests can be answered from the last valid Modbus TCP response.
 - **IP Server mode (TCP/UDP → RTU):** repeated TCP read requests can be answered from the last valid RTU response without querying the RS-485 bus again.
 
-Both caches are disabled by default. Each can be enabled separately in the Web UI. Choose **Fixed TTL** (50–10,000 ms; default 500 ms) or **Adaptive TTL**, which estimates a separate TTL for each polling request key from 80% of its observed request interval (bounded to 50–10,000 ms). The fixed value is used until an interval is observed. The mode is persisted in NVS; adaptive estimates remain in RAM. This feature was added after the v1.2.1 release and still requires firmware build and hardware validation. The cache has 64 entries and only stores valid read functions 01–04. Write and read/write operations are never cached; successful writes invalidate only overlapping cached ranges in the corresponding writable data space. Unknown or malformed write ranges trigger a conservative invalidation of all cached reads for that Unit ID and direction. Cache hits do not extend the TTL. Cached values may therefore be stale up to the applicable fixed or adaptive TTL; keep the cache disabled when every read must return the freshest device value.
+Both caches are disabled by default. Each can be enabled separately in the Web UI. Choose **Fixed TTL** (50–10,000 ms; default 500 ms) or **Adaptive TTL**, which estimates a separate TTL for each polling request key from 80% of its observed request interval (bounded to 50–10,000 ms). The fixed value is used until an interval is observed. The mode is persisted in NVS; adaptive estimates remain in RAM. This feature is included in the v1.2.2 source; firmware build and hardware validation are still pending. The cache has 64 entries and only stores valid read functions 01–04. Write and read/write operations are never cached; successful writes invalidate only overlapping cached ranges in the corresponding writable data space. Unknown or malformed write ranges trigger a conservative invalidation of all cached reads for that Unit ID and direction. Cache hits do not extend the TTL. Cached values may therefore be stale up to the applicable fixed or adaptive TTL; keep the cache disabled when every read must return the freshest device value.
 
 See [Cache behavior and configuration](docs/CACHE.md) for details. The cache option displayed in Section 1 follows the selected Client/Server mode; the other mode's setting remains saved in NVS.
 
@@ -66,27 +66,27 @@ See [Cache behavior and configuration](docs/CACHE.md) for details. The cache opt
 
 ![Both gateway topologies: TCP Client / RTU Slave and TCP Server / RTU Master](docs/assets/system-architecture.png)
 
-## Web interface (v1.2.1)
+## Web interface (v1.2.2)
 
-### Aperçus de l'interface Web v1.2.1 — simulations
+### Aperçus de l'interface Web v1.2.2 — simulations
 
 > **Illustrations simulées, et non captures réelles de l'ESP32.** Elles reprennent l'organisation actuelle (logo, barre d'actions, paramètres et tableau de connexions), avec des adresses et états d'exemple. Les vrais journaux de trames, compteurs et connexions dépendent du matériel.
 
 **TCP Client (RTU → IP)**
 
-![Simulation de l'interface tcp-client v1.2.1](docs/assets/ui-v1.2.1-tcp-client-simulation.svg)
+![Simulation de l'interface tcp-client v1.2.1](docs/assets/ui-v1.2.2-tcp-client-simulation.svg)
 
 **TCP Serveur (IP → RTU)**
 
-![Simulation de l'interface tcp-server v1.2.1](docs/assets/ui-v1.2.1-tcp-server-simulation.svg)
+![Simulation de l'interface tcp-server v1.2.1](docs/assets/ui-v1.2.2-tcp-server-simulation.svg)
 
 **UDP Client (RTU → IP)**
 
-![Simulation de l'interface udp-client v1.2.1](docs/assets/ui-v1.2.1-udp-client-simulation.svg)
+![Simulation de l'interface udp-client v1.2.1](docs/assets/ui-v1.2.2-udp-client-simulation.svg)
 
 **UDP Serveur (IP → RTU)**
 
-![Simulation de l'interface udp-server v1.2.1](docs/assets/ui-v1.2.1-udp-server-simulation.svg)
+![Simulation de l'interface udp-server v1.2.1](docs/assets/ui-v1.2.2-udp-server-simulation.svg)
 
 Le panneau de diagnostics des trames, situé sous les paramètres, distingue **RTU RAW** (cyan), **TCP/UDP RAW** (orange) et les mesures **TIMING** (violet). La barre d'actions sous le logo regroupe le thème, la langue, **Enregistrer / appliquer**, **Redémarrer** et **Actualiser**.
 
@@ -195,4 +195,4 @@ GPLv3 license text.
 
 ## Latest release
 
-Latest published release: **v1.2.1** (TCP/UDP Client/Server) on `main`. The current `main` branch additionally contains a **fixed/adaptive cache TTL selector**, not yet validated by compilation and hardware testing and not part of the published v1.2.1 tag. The Web UI supports mode-aware response caches, a TCP-only persistent connection setting, bilingual labels and harmonized RTU/IP artwork. See [CHANGELOG.md](CHANGELOG.md) for the release history, [docs/CLIENT_TCP_ASYNC.md](docs/CLIENT_TCP_ASYNC.md) for cooperative Client TCP handling, and [docs/CACHE.md](docs/CACHE.md) for cache behavior and data-freshness limits.
+Current source version: **v1.2.2** on `main` (fixed/adaptive cache TTL). The last release confirmed published by the maintainer is **v1.2.1**; v1.2.2 has not been published through the available GitHub integration. The v1.2.2 firmware has not yet been build- or hardware-validated. The Web UI supports mode-aware response caches, a TCP-only persistent connection setting, bilingual labels and harmonized RTU/IP artwork. See [CHANGELOG.md](CHANGELOG.md) for the release history, [docs/CLIENT_TCP_ASYNC.md](docs/CLIENT_TCP_ASYNC.md) for cooperative Client TCP handling, and [docs/CACHE.md](docs/CACHE.md) for cache behavior and data-freshness limits.
