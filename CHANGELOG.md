@@ -1,3 +1,9 @@
+## 1.2.5 — Clearer Web UI sections (2026-11-18; source on `main`, release publication pending)
+
+- Removed numeric prefixes from the four main Web section headings, in French and English.
+- Visually separated manual Modbus IP frame transmission from RTU/IP frame monitoring and capture, with dedicated titled panels.
+- Preserved the existing manual-send, listening, clear-log and TXT-export functions. Build and hardware verification pending.
+
 ## 1.2.4 — Frame diagnostics action bar (2026-11-18; source on `main`, release publication pending)
 
 - Moved Stop/Resume RTU listening next to Clear frame display and Export frame capture (.txt), retaining the live listening status on the same responsive action row.
