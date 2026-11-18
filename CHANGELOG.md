@@ -1,3 +1,8 @@
+## 1.2.4 — Frame diagnostics action bar (2026-11-18; source on `main`, release publication pending)
+
+- Moved Stop/Resume RTU listening next to Clear frame display and Export frame capture (.txt), retaining the live listening status on the same responsive action row.
+- No change to Modbus transport or cache behavior. Compilation and hardware validation pending.
+
 ## 1.2.3 — Live cache diagnostics (2026-11-18; source on `main`, release publication pending)
 
 - Added live active-cache occupancy (`0 / 64` when disabled) and effective TTL range to the Counters / Diagnostics Web panel, with a lightweight JSON status endpoint. Counts exclude expired entries and entries belonging to the inactive Client/Server direction. Firmware build and hardware validation pending.
