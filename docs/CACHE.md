@@ -91,3 +91,6 @@ From component release 1.1.9, normal RTU-originated Client TCP transactions rece
 Both cache switches are **direction-specific**, not transport-specific: **Client** applies to TCP Client and UDP Client, and **Server** applies to TCP Server and UDP Server. The currently selected direction determines which checkbox appears. The inactive direction's saved setting is retained.
 
 The shared **TTL mode** selector is shown only when the currently selected direction's **Enable cache** checkbox is checked. The numeric **cache TTL (ms)** field is shown only for **Fixed TTL**. Switching to **Adaptive TTL** hides the numeric field but retains its value as a fallback. Disabling the cache hides the TTL controls without erasing the settings. Only valid read functions 01–04 are cached; writes are not cached and trigger the documented invalidation rules.
+
+
+> **Web UI v1.2.7:** The Mode selector is transport-neutral: **Client (RTU → IP)** or **Server (IP → RTU)**. Choose **TCP** or **UDP** independently in Transport. Earlier v1.2.6 screenshots remain historical references and may display older labels.
