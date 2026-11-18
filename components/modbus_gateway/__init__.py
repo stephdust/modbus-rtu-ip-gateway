@@ -26,40 +26,23 @@ def _install_offline_gateway_link():
     script = r"""
 <script>
 (() => {
-  // Match the URL shown by the Interface web text sensor. Do not depend
-  // on the frontend's precise DOM markup or its unit formatting.
-  const gatewayURL = location.protocol + "//" + location.hostname + "/";
-  function walk(root) {
-    const iterator = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    const nodes = [];
-    while (iterator.nextNode()) {
-      const node = iterator.currentNode;
-      const parent = node.parentElement;
-      if (!parent || parent.closest("a,script,style,textarea")) continue;
-      if (node.nodeValue.includes(gatewayURL)) nodes.push(node);
-    }
-    for (const node of nodes) {
-      const value = node.nodeValue;
-      const pos = value.indexOf(gatewayURL);
-      if (pos < 0) continue;
-      const before = document.createTextNode(value.slice(0, pos));
-      const link = document.createElement("a");
-      link.href = gatewayURL;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      link.textContent = gatewayURL;
-      link.style.cssText = "color:#42a5f5;text-decoration:underline;cursor:pointer";
-      const after = document.createTextNode(value.slice(pos + gatewayURL.length));
-      node.replaceWith(before, link, after);
-    }
-    for (const el of root.querySelectorAll("*")) {
-      if (el.shadowRoot) walk(el.shadowRoot);
-    }
+  // Non-invasive: never rewrite Lit/ESPHome-managed text nodes.
+  // A separate link remains usable even when the text sensor is re-rendered.
+  function addGatewayLink() {
+    if (document.getElementById("modbus-gateway-link")) return;
+    const a = document.createElement("a");
+    a.id = "modbus-gateway-link";
+    a.href = location.protocol + "//" + location.hostname + "/";
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    a.textContent = "Ouvrir l'interface Modbus ↗";
+    a.title = a.href;
+    a.style.cssText = "position:fixed;right:16px;bottom:16px;z-index:2147483647;padding:12px 16px;background:#1976d2;color:white;border-radius:8px;text-decoration:none;font:600 14px sans-serif;box-shadow:0 2px 10px #0005";
+    document.body.appendChild(a);
   }
-  function refresh() { walk(document); }
-  document.addEventListener("DOMContentLoaded", refresh);
-  // ESPHome's UI is reactive; the text sensor may arrive after page load.
-  setInterval(refresh, 750);
+  if (document.readyState === "loading")
+    document.addEventListener("DOMContentLoaded", addGatewayLink, {once:true});
+  else addGatewayLink();
 })();
 </script>"""
 
