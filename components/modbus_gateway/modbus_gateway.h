@@ -2223,7 +2223,15 @@ main>.bottom-actions>button{height:44px!important;min-height:44px!important;max-
     if (cache_ttl_adaptive_) s += " selected";
     s += R"HTML(>TTL adaptatif</option></select><div id="cache_fixed_ttl"><label>Durée de validité du cache (ms)</label><input name="cache_ttl" form="cfg" type="number" min="50" max="10000" value=")HTML";
     s += String(cache_ttl_ms_);
-    s += R"HTML("></div><p class="muted">Mode adaptatif : TTL calculé par requête à partir de la période observée (80 %, entre 50 et 10 000 ms). Valeur initiale : TTL fixe.</p></div></div>
+    s += R"HTML("></div><p class="muted">Mode adaptatif : TTL calculé par requête à partir de la période observée (80 %, entre 50 et 10 000 ms). Valeur initiale : TTL fixe.</p></div>
+<div id="cache_swr_field"><label class="check-label"><input type="checkbox" name="cache_swr" value="1" form="cfg")HTML";
+    if (cache_swr_enabled_) s += " checked";
+    s += R"HTML(> Cache client : répondre immédiatement et rafraîchir en arrière-plan</label>
+<div id="cache_swr_options"><label>Âge maximal des données (ms)</label><input name="cache_swr_max" type="number" form="cfg" min="1000" max="30000" step="500" value=")HTML";
+    s += String(cache_swr_max_age_ms_);
+    s += R"HTML("><label>Fenêtre maximale de réponse RTU (ms)</label><input name="rtu_window" type="number" form="cfg" min="250" max="2000" step="50" value=")HTML";
+    s += String(rtu_reply_window_ms_);
+    s += R"HTML("></div><p class="muted">Mode client TCP uniquement. Une réponse correcte en cache peut être servie jusqu’à l’âge maximal ; une lecture périmée déclenche un rafraîchissement TCP sans seconde réponse RTU. Au-delà de l’âge maximal, la passerelle ne réutilise plus ces données. Les réponses RTU en retard sont supprimées ; les erreurs ne sont jamais mises en cache. Utiliser une limite d’âge compatible avec les exigences de sécurité des données.</p></div></div>
 <div class="muted tcp-note">Le cache concerne uniquement les lectures Modbus (fonctions 01 à 04). L’option affichée correspond au mode Client/Serveur sélectionné ; le réglage de l’autre mode est conservé. Les écritures réussies invalident les réponses mémorisées pour l’Unit ID concerné. 64 entrées maximum.</div>
 </div></section>
 <section><h2><span class="section-badge section-badge-rtu" aria-hidden="true"><img src="/img/modbus-rtu.jpg" alt=""><small>RTU</small></span>Paramètres Modbus RTU</h2><div class="grid">
@@ -2278,6 +2286,10 @@ main>.bottom-actions>button{height:44px!important;min-height:44px!important;max-
 let currentLanguage='fr';
 const translations={
 'Gestion du TTL':'TTL management','TTL fixe':'Fixed TTL','TTL adaptatif':'Adaptive TTL',
+'Cache client : répondre immédiatement et rafraîchir en arrière-plan':'Client cache: respond immediately and refresh in background',
+'Âge maximal des données (ms)':'Maximum data age (ms)',
+'Fenêtre maximale de réponse RTU (ms)':'Maximum RTU reply window (ms)',
+'Mode client TCP uniquement. Une réponse correcte en cache peut être servie jusqu’à l’âge maximal ; une lecture périmée déclenche un rafraîchissement TCP sans seconde réponse RTU. Au-delà de l’âge maximal, la passerelle ne réutilise plus ces données. Les réponses RTU en retard sont supprimées ; les erreurs ne sont jamais mises en cache. Utiliser une limite d’âge compatible avec les exigences de sécurité des données.':'TCP client only. A validated cached reply may be served up to the maximum age; a stale read triggers a TCP refresh without a second RTU response. Beyond that age, old values are never reused. Late RTU replies are suppressed; errors are never cached. Choose a data-age limit appropriate to safety requirements.',
 'Mode adaptatif : TTL calculé par requête à partir de la période observée (80 %, entre 50 et 10 000 ms). Valeur initiale : TTL fixe.':'Adaptive mode: TTL calculated per request from the observed polling interval (80%, between 50 and 10,000 ms). Initial value: fixed TTL.',
 'État et connexions':'Status and connections','Adresse IP':'IP address','Connecté depuis':'Connected for','Passerelle :':'Gateway:','Serveur IP :':'IP server:','Clients IP :':'IP clients:',
 'Durée de connexion en temps écoulé. Les connexions UDP ne sont pas persistantes.':'Connection duration is elapsed time. UDP has no persistent connections.',
@@ -2290,7 +2302,9 @@ const translations={
 'Connexion TCP persistante':'Persistent TCP connection','Garde la connexion ouverte entre les requêtes RTU pour réduire la latence (mode Client TCP uniquement).':'Keep the connection open between RTU requests to reduce latency (TCP Client mode only).','Redémarrer la passerelle':'Restart gateway','Redémarrer':'Restart','Redémarre l’ESP32 sans modifier les paramètres enregistrés.':'Restart the ESP32 without changing saved settings.',
 'Adresse IP du serveur Modbus':'Modbus server IP address','Port Modbus IP':'Modbus IP port','Timeout réseau (secondes)':'Network timeout (seconds)','Comportement en cas d’erreur Modbus':'Behavior on Modbus errors','Standard : envoyer une exception Modbus':'Standard: send a Modbus exception','Silencieux : ne pas répondre':'Silent: do not reply','S’applique aux modes Client et Serveur (TCP/UDP). En mode silencieux, aucune réponse n’est émise en cas d’erreur Modbus, y compris CRC, connexion, réponse invalide ou exception. Les erreurs restent enregistrées dans les logs.':'Applies to Client and Server modes (TCP/UDP). In silent mode, no Modbus reply is sent on any error (CRC, connection, invalid response or exception). Errors remain available in logs.',
 'Activer le cache en mode Client IP (RTU → IP)':'Enable cache in Client mode (RTU → IP)','Activer le cache en mode Serveur IP (IP → RTU)':'Enable cache in Server mode (IP → RTU)','Durée de validité du cache (ms)':'Cache time-to-live (ms)','Le cache concerne uniquement les lectures Modbus (fonctions 01 à 04). L’option affichée correspond au mode Client/Serveur sélectionné ; le réglage de l’autre mode est conservé. Les écritures réussies invalident les réponses mémorisées pour l’Unit ID concerné. 64 entrées maximum.':'The cache stores only Modbus read requests (functions 01 to 04). Only the option for the selected Client/Server mode is shown; the other mode’s setting is preserved. Successful writes invalidate cached responses for the affected Unit ID. Maximum 64 entries.',
-'CACHE TROUVÉ':'CACHE HIT','CACHE ABSENT':'CACHE MISS','CACHE ENREGISTRÉ':'CACHE STORE','CACHE INVALIDÉ':'CACHE INVALIDATE','Mode Client':'Client mode','Mode Serveur':'Server mode','Fonction=':'Function=','Adresse=':'Address=','Quantité=':'Quantity=','Âge=':'Age=','Entrées=':'Entries=','Opération réussie hors lecture.':'Successful non-read operation.',
+'CACHE TROUVÉ':'CACHE HIT','CACHE ABSENT':'CACHE MISS','CACHE ENREGISTRÉ':'CACHE STORE','CACHE INVALIDÉ':'CACHE INVALIDATE',
+'CACHE STALE':'CACHE PÉRIMÉ','CACHE REFRESH':'ACTUALISATION CACHE','CACHE REFRESH OK':'ACTUALISATION CACHE OK',
+'CACHE REFRESH ERROR':'ERREUR ACTUALISATION CACHE','RTU DEADLINE':'DÉLAI RTU','Mode Client':'Client mode','Mode Serveur':'Server mode','Fonction=':'Function=','Adresse=':'Address=','Quantité=':'Quantity=','Âge=':'Age=','Entrées=':'Entries=','Opération réussie hors lecture.':'Successful non-read operation.',
 'Baudrate':'Baud rate','Data bits':'Data bits','Parity':'Parity','Stop bits':'Stop bits',
 'GPIO TX (-1 = automatique)':'TX GPIO (-1 = automatic)','GPIO RX (-1 = automatique)':'RX GPIO (-1 = automatic)','GPIO DE/RE/EN (-1 = automatique)':'DE/RE/EN GPIO (-1 = automatic)',
 'Identifiant Modbus RTU':'Modbus RTU device ID','Automatique (adresse reçue)':'Automatic (received address)','Manuel':'Manual','ID RTU manuel (1–247)':'Manual RTU ID (1–247)',
@@ -2378,11 +2392,14 @@ function crc16Modbus(bytes){let crc=0xFFFF;for(const b of bytes){crc^=b;for(let 
 function toggleHostField(){const isServer=document.querySelector('select[name="mode"]').value==='SERVER';const isTcp=document.querySelector('select[name="transport"]').value==='TCP';document.getElementById('host_field').style.display=isServer?'none':'block';document.getElementById('host_input').required=!isServer;const persistentField=document.getElementById('persistent_tcp_field');const persistentInput=document.querySelector('input[name="persistent"]');const showPersistent=!isServer&&isTcp;persistentField.style.display=showPersistent?'block':'none';persistentInput.disabled=!showPersistent;}
 document.querySelector('select[name="mode"]').addEventListener('change',toggleHostField);
 document.querySelector('select[name="transport"]').addEventListener('change',toggleHostField);toggleHostField();
-function toggleCacheFields(){const isClient=document.querySelector('select[name="mode"]').value==='CLIENT';document.getElementById('cache_client_field').style.display=isClient?'block':'none';document.getElementById('cache_server_field').style.display=isClient?'none':'block';const activeCache=document.querySelector('input[name="'+(isClient?'cache_client':'cache_server')+'"]');document.getElementById('cache_ttl_field').style.display=activeCache.checked?'block':'none';document.getElementById('cache_fixed_ttl').style.display=document.querySelector('select[name="cache_ttl_mode"]').value==='fixed'?'block':'none';}
+function toggleCacheFields(){const isClient=document.querySelector('select[name="mode"]').value==='CLIENT';document.getElementById('cache_client_field').style.display=isClient?'block':'none';document.getElementById('cache_server_field').style.display=isClient?'none':'block';const activeCache=document.querySelector('input[name="'+(isClient?'cache_client':'cache_server')+'"]');document.getElementById('cache_ttl_field').style.display=activeCache.checked?'block':'none';document.getElementById('cache_fixed_ttl').style.display=document.querySelector('select[name="cache_ttl_mode"]').value==='fixed'?'block':'none';const swr=document.querySelector('input[name="cache_swr"]');const swrVisible=isClient&&activeCache.checked&&document.querySelector('select[name="transport"]').value==='TCP';document.getElementById('cache_swr_field').style.display=swrVisible?'block':'none';swr.disabled=!swrVisible;document.getElementById('cache_swr_options').style.display=swr.checked?'block':'none';}
 document.querySelector('select[name="mode"]').addEventListener('change',toggleCacheFields);
 document.querySelector('input[name="cache_client"]').addEventListener('change',toggleCacheFields);
 document.querySelector('input[name="cache_server"]').addEventListener('change',toggleCacheFields);
-document.querySelector('select[name="cache_ttl_mode"]').addEventListener('change',toggleCacheFields);toggleCacheFields();
+document.querySelector('select[name="cache_ttl_mode"]').addEventListener('change',toggleCacheFields);
+document.querySelector('input[name="cache_swr"]').addEventListener('change',toggleCacheFields);
+document.querySelector('select[name="transport"]').addEventListener('change',toggleCacheFields);
+toggleCacheFields();
 function escapeHtml(value){return String(value).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
 function formatFrame(x){const kind=/RTU/i.test(x.dir)?'rtu':/(TCP|UDP|IP)/i.test(x.dir)?'ip':/TIMING/i.test(x.dir)?'timing':'other';const prefix='<span class="frame-'+kind+'">'+escapeHtml(x.time)+' | '+escapeHtml(translateValue(x.dir))+'</span> | ';const isRtu=x.dir.startsWith('RTU')||x.dir==='MANUAL RTU';const bytes=x.hex.trim().split(/\s+/).filter(Boolean);if(!isRtu||bytes.length<3)return prefix+escapeHtml(translateValue(x.hex));const vals=bytes.map(b=>parseInt(b,16));if(vals.some(v=>!Number.isFinite(v)))return prefix+x.hex;const calculated=crc16Modbus(vals.slice(0,-2));const crcOk=vals[vals.length-2]===(calculated&255)&&vals[vals.length-1]===((calculated>>8)&255);const payload=bytes.slice(0,-2).join(' ');const crc='<span class=\"crc-byte\">'+bytes[bytes.length-2]+'</span> <span class=\"crc-byte\">'+bytes[bytes.length-1]+'</span>';return prefix+payload+' '+crc+'  <span class=\"'+(crcOk?'crc-ok':'crc-bad')+'\">CRC '+(crcOk?'OK':tr('Erreur','Error'))+'</span>';}
 function updateDashboard(frames){
@@ -2656,6 +2673,21 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
       int ttl = web_.arg("cache_ttl").toInt();
       if (ttl >= 50 && ttl <= 10000) cache_ttl_ms_ = uint32_t(ttl);
     }
+    if (tcp_mode_ == "CLIENT") {
+      cache_swr_enabled_ = web_.hasArg("cache_swr") && web_.arg("cache_swr") == "1" &&
+                           cache_client_enabled_ && transport_ == "TCP";
+    }
+    if (web_.hasArg("cache_swr_max")) {
+      int max_age = web_.arg("cache_swr_max").toInt();
+      if (max_age >= 1000 && max_age <= 30000) cache_swr_max_age_ms_ = uint32_t(max_age);
+    }
+    if (web_.hasArg("rtu_window")) {
+      int window = web_.arg("rtu_window").toInt();
+      if (window >= 250 && window <= 2000) rtu_reply_window_ms_ = uint32_t(window);
+    }
+    prefs_.putBool("cacheswr", cache_swr_enabled_);
+    prefs_.putUInt("swrmaxage", cache_swr_max_age_ms_);
+    prefs_.putUInt("rtuwindow", rtu_reply_window_ms_);
     prefs_.putBool("cachecli", cache_client_enabled_);
     prefs_.putBool("cachesrv", cache_server_enabled_);
     prefs_.putUInt("cachettl", cache_ttl_ms_);
