@@ -1,8 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Modbus RTU-TCP Gateway contributors.
 import json
-import gzip
-import re
 from pathlib import Path
 
 import esphome.codegen as cg
@@ -10,80 +8,6 @@ from esphome.core import CORE
 import esphome.config_validation as cv
 from esphome.const import CONF_ID
 
-
-# Add a small, firmware-embedded link enhancement to ESPHome's v3 page.
-# The official frontend remains embedded by web_server.local: true; no CDN,
-# manually copied JS file, or network request is required at runtime.
-# This is deliberately limited to the HTML index builder, not the HTTP server.
-def _install_offline_gateway_link():
-    from esphome.components import web_server
-
-    if getattr(web_server.build_index_html, "_modbus_gateway_link", False):
-        return
-
-    original = web_server.build_index_html
-    original_serve_local = web_server.serve_local
-    script = r"""
-<script>
-(() => {
-  // Non-invasive: never rewrite Lit/ESPHome-managed text nodes.
-  // A separate link remains usable even when the text sensor is re-rendered.
-  function addGatewayLink() {
-    if (document.getElementById("modbus-gateway-link")) return;
-    const a = document.createElement("a");
-    a.id = "modbus-gateway-link";
-    a.href = location.protocol + "//" + location.hostname + "/";
-    a.target = "_blank";
-    a.rel = "noopener noreferrer";
-    a.textContent = "Ouvrir l'interface Modbus ↗";
-    a.title = a.href;
-    a.style.cssText = "position:fixed;right:16px;bottom:16px;z-index:2147483647;padding:12px 16px;background:#1976d2;color:white;border-radius:8px;text-decoration:none;font:600 14px sans-serif;box-shadow:0 2px 10px #0005";
-    document.body.appendChild(a);
-  }
-  if (document.readyState === "loading")
-    document.addEventListener("DOMContentLoaded", addGatewayLink, {once:true});
-  else addGatewayLink();
-})();
-</script>"""
-
-    def _offline_v3_html():
-        # ESPHome local:true serves a precompressed INDEX_GZ/INDEX_BR, bypassing
-        # build_index_html entirely. Read ESPHome's own bundled v3 gzip frontend
-        # at compile time and emit a patched, self-contained HTML resource.
-        header = Path(web_server.__file__).with_name("server_index_v3.h")
-        source = header.read_text(encoding="utf-8")
-        match = re.search(
-            r"#ifdef USE_WEBSERVER_GZIP\s+constexpr uint8_t INDEX_GZ\[\] PROGMEM = \{(.*?)\};",
-            source,
-            flags=re.S,
-        )
-        if match is None:
-            raise ValueError("Cannot locate ESPHome v3 bundled gzip frontend: " + str(header))
-        packed = bytes(int(x, 16) for x in re.findall(r"0x([0-9a-fA-F]{2})", match.group(1)))
-        html = gzip.decompress(packed).decode("utf-8")
-        if "</body>" not in html:
-            raise ValueError("ESPHome v3 bundled frontend has no closing body tag")
-        return html.replace("</body>", script + "</body>", 1)
-
-    def serve_local_with_link(config, wifi_config):
-        if config.get("version") == 3 and config.get("local") is True:
-            # Use ESPHome's ordinary INDEX_HTML path instead of INDEX_GZ so
-            # the injected script is actually served. Everything is still
-            # embedded in firmware; no browser Internet access is required.
-            return False
-        return original_serve_local(config, wifi_config)
-
-    def build_index_html_with_link(config):
-        if config.get("version") == 3 and config.get("local") is True:
-            return _offline_v3_html()
-        return original(config)
-
-    build_index_html_with_link._modbus_gateway_link = True
-    web_server.serve_local = serve_local_with_link
-    web_server.build_index_html = build_index_html_with_link
-
-
-_install_offline_gateway_link()
 
 gateway_ns = cg.esphome_ns.namespace("modbus_gateway")
 ModbusGateway = gateway_ns.class_("ModbusGateway", cg.Component)
