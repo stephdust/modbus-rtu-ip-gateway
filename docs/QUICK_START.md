@@ -111,7 +111,30 @@ Les quatre images suivantes proviennent de la capture fournie depuis l'interface
 
 ![Capture réelle v1.2.6 — journal et actions](assets/04_ecoute_trames_actions.png)
 
-Les anciennes simulations SVG ne sont plus utilisées dans cette présentation. Les captures ne constituent pas des preuves de fonctionnement des autres modes (TCP Serveur, UDP Client et UDP Serveur).
+Les anciennes simulations SVG ne sont plus utilisées dans cette présentation. Les captures documentent des états de configuration observés, sans constituer une validation de tous les scénarios réseau.
+
+
+### Captures réelles de l'interface Web v1.2.6 — mode TCP Serveur
+
+Les quatre images suivantes proviennent de la capture fournie en **mode TCP Serveur (TCP → RTU)**. Elles illustrent la configuration du port local **502**, le cache Serveur avec **TTL adaptatif**, les paramètres série **9600 8N1** et les diagnostics. La capture montre également une destination TCP `192.168.1.71:502` indiquée **déconnectée** dans le panneau d'état : cet affichage ne doit pas être interprété comme une connexion entrante active. Les valeurs et messages sont ceux de cette session, pas des valeurs garanties.
+
+**1. Bandeau et Modbus IP (Serveur)** — mode TCP Serveur, port 502, timeout réseau, comportement silencieux sur timeout et TTL adaptatif.
+
+![Capture réelle v1.2.6 — TCP Serveur, Modbus IP](assets/05_tcp_serveur_modbus_ip.png)
+
+**2. Paramètres RTU, GPIO et connexions** — ID RTU automatique, GPIO 17/18/21, état Wi-Fi et tableau des connexions.
+
+![Capture réelle v1.2.6 — TCP Serveur, RTU et connexions](assets/06_tcp_serveur_rtu_connexions.png)
+
+**3. Compteurs et envoi manuel** — six indicateurs, cache à 0 / 64, TTL effectif non renseigné et panneau de réponse à une requête manuelle.
+
+![Capture réelle v1.2.6 — TCP Serveur, diagnostics et envoi manuel](assets/07_tcp_serveur_diagnostics_manuel.png)
+
+**4. Écoute RTU / IP et actions** — commandes de capture, journal RTU/TCP avec erreurs de connexion, export TXT et barre d'actions.
+
+![Capture réelle v1.2.6 — TCP Serveur, journal et actions](assets/08_tcp_serveur_journal_actions.png)
+
+Les modes **UDP Client** et **UDP Serveur** ne sont pas représentés par ces captures TCP.
 
 ## 6. Configure Section 2 — Modbus RTU
 
