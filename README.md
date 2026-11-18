@@ -10,9 +10,9 @@ A Wi-Fi Modbus gateway built with **ESPHome**, **ESP32-S3** and the **Arduino fr
 
 > **Reference hardware:** [Waveshare ESP32-S3-RS485-CAN](https://docs.waveshare.com/ESP32-S3-RS485-CAN). The project defaults match this board's RS-485 signals: TX GPIO17, RX GPIO18 and RS485 enable GPIO21. The project maintainer reports successful testing with this device, including four connected Modbus TCP clients.
 
-> **Version 1.3.1 source on `main`:** supports **TCP Client, TCP Server, UDP Client and UDP Server**. The maintainer reports successful functional tests of the four modes; robustness testing remains pending. See [TCP/UDP development and UI behavior](docs/TCP_UDP_DEVELOPMENT.md).
+> **Version 1.3.2 source on `main`:** supports **TCP Client, TCP Server, UDP Client and UDP Server**. The maintainer reports successful functional tests of the four modes; robustness testing remains pending. See [TCP/UDP development and UI behavior](docs/TCP_UDP_DEVELOPMENT.md).
 
-### TCP/UDP web UI (v1.3.1)
+### TCP/UDP web UI (v1.3.2)
 
 The source interface labels the network section **Modbus IP**, offers a TCP/UDP selector, and includes four harmonized blue/cyan section thumbnails matching the RTU ↔ IP header artwork. The IP thumbnail explicitly shows **TCP / UDP**. The **Persistent TCP connection** control is displayed only for **TCP Client**; it is hidden for TCP Server and both UDP modes, and the stored TCP setting is preserved while UDP is selected.
 
@@ -38,6 +38,29 @@ The gateway provides two independent optional response caches, one for each **Cl
 Both caches are disabled by default. Each can be enabled separately in the Web UI. Choose **Fixed TTL** (50–10,000 ms; default 500 ms) or **Adaptive TTL**, which estimates a separate TTL for each polling request key from 80% of its observed request interval (bounded to 50–10,000 ms). The fixed value is used until an interval is observed. The mode is persisted in NVS; adaptive estimates remain in RAM. This feature is included in the v1.2.2 source; firmware build and hardware validation are still pending. The cache has 64 entries and only stores valid read functions 01–04. Write and read/write operations are never cached; successful writes invalidate only overlapping cached ranges in the corresponding writable data space. Unknown or malformed write ranges trigger a conservative invalidation of all cached reads for that Unit ID and direction. Cache hits do not extend the TTL. Cached values may therefore be stale up to the applicable fixed or adaptive TTL; keep the cache disabled when every read must return the freshest device value.
 
 See [Cache behavior and configuration](docs/CACHE.md) for details. The cache option displayed in Section 1 follows the selected Client/Server mode; the other mode's setting remains saved in NVS.
+
+### Bounded background refresh for RTU display (source v1.3.2)
+
+An opt-in **stale-while-revalidate** option is available in TCP Client mode
+when the client read cache and persistent TCP connection are enabled.
+Validated cached reads can answer the RTU display immediately even after
+their normal TTL expires, up to a configurable **maximum data age**.
+A separate background Modbus TCP transaction refreshes the cache and **never
+sends a second RTU response** to an already-serviced request. RTU responses
+from slow foreground TCP transactions are dropped if they cannot finish
+before the configurable master reply deadline.
+
+Default behavior is unchanged; the feature is initially **off**. Configure
+it in the Modbus IP section. Defaults are 10,000 ms maximum data age and
+500 ms RTU reply window; the TTL can still be fixed or adaptive.
+A cached response remains *structurally validated*, but its actual device
+values can be stale—do not use this mode for signals that must always
+reflect live safety-critical state.
+
+The `/cache-stats` endpoint reports stale hits, successful/failed refreshes,
+and dropped late RTU responses. Full details in [Cache behavior](docs/CACHE.md).
+**ESPHome compilation and hardware tests are still required** for this source
+revision.
 
 ## Features
 
