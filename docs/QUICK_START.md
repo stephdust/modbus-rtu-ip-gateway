@@ -51,7 +51,7 @@ After the node joins Wi-Fi, find its IP address in ESPHome logs or the DHCP clie
 http://<ESP32-IP>/
 ```
 
-The web UI listens on TCP port **80**. The Modbus TCP listener/client port is a separate setting (502 by default).
+The gateway's Modbus configuration and frame-diagnostics Web UI listens on TCP port **80**. The separate ESPHome diagnostics interface uses port **8080** and its stock local v3 assets; no custom script is injected. The YAML **Interface web** text sensor publishes the port-80 URL from the Wi-Fi IP address, and this can be opened directly in a browser. The Modbus TCP listener/client port is a separate setting (502 by default).
 
 The TCP endpoint and RTU serial parameters are intentionally **not hard-coded in the YAML**. The component supplies first-boot defaults: TCP Client mode, remote host `192.168.1.100`, TCP port `502`, and RTU `9600 8N1`. These values can be changed in the web interface. Press **Save / apply** to store them in ESP32 non-volatile storage (NVS); saved values are loaded at every subsequent boot and take precedence over the component defaults.
 
@@ -77,18 +77,18 @@ Select one operating mode:
 
 The TCP timeout is configurable from 1 to 30 seconds; the initial value is 3 seconds.
 
-### Remote timeout response policy
+### Modbus error response policy
 
-The **Remote timeout behavior** selector is shared by both modes and defaults to **Standard**.
+The **Behavior on Modbus errors** selector applies to Client and Server modes, over TCP and UDP, and defaults to **Standard**.
 
-- **Standard:** if the remote TCP server (Client mode) or downstream RTU slave (Server mode) does not provide a complete response before the configured timeout, the gateway returns exception `0x0B` to the upstream master/client.
-- **Silent:** for that remote-response timeout only, the gateway sends no RTU response in Client mode or no TCP response in Server mode. The upstream master/client then applies its own timeout. The TCP session in Server mode remains available for later requests.
+- **Standard:** sends a Modbus exception when an upstream response is required but a downstream transaction fails. Timeouts and missing downstream RTU replies use gateway exception `0x0B`; other gateway-path or invalid-reply failures can use `0x0A`. Valid Modbus exception responses from the downstream device are forwarded.
+- **Silent:** sends **no Modbus reply for any failure** (including timeout, connection/protocol failure, invalid downstream RTU reply or received Modbus exception). The upstream master/client relies on its own timeout. Successful responses still pass through normally.
 
-The setting is saved across restarts. It does not suppress CRC errors or other transport/protocol failures. In Client mode, for example, connection/protocol failures continue to use exception `0x0A`; a corrupt RTU request is discarded. In Server mode, an invalid RTU response is still rejected and reported with exception `0x0B`. See [Protocol behaviour](PROTOCOL.md#remote-timeout-policy-v113) for exact details.
+Invalid CRC RTU requests are discarded before forwarding in either mode. The error policy is saved across restarts. See [Protocol behavior](PROTOCOL.md#remote-timeout-policy-v1113) for the current error-scope rules.
 
 ### Response cache (mode-specific)
 
-The cache control follows the selected mode: **TCP Client** shows only the Client cache switch, while **TCP Server** shows only the Server cache switch. Switching modes changes the visible option immediately. The two settings are independent: saving one mode does not overwrite the other mode's hidden setting. When the active cache is enabled, choose **Fixed TTL** (50–10,000 ms, default 500 ms) or **Adaptive TTL**. Adaptive mode estimates each request's polling interval and sets TTL to 80% of that interval, bounded to 50–10,000 ms; the fixed value is the initial fallback. The selector is saved in NVS. This addition is part of the v1.2.7 source on `main` and has not yet been compiled or hardware-validated. Both caches are disabled by default. See [Cache behavior and configuration](CACHE.md) before enabling caching on a process where stale values could be unsafe.
+The cache control follows the selected mode: **TCP Client** shows only the Client cache switch, while **TCP Server** shows only the Server cache switch. Switching modes changes the visible option immediately. The two settings are independent: saving one mode does not overwrite the other mode's hidden setting. When the active cache is enabled, choose **Fixed TTL** (50–10,000 ms, default 500 ms) or **Adaptive TTL**. Adaptive mode estimates each request's polling interval and sets TTL to 80% of that interval, bounded to 50–10,000 ms; the fixed value is the initial fallback. The selector is saved in NVS. The conventional cache has been exercised in user-provided gateway logs. Source v1.3.2 additionally offers an **optional TCP Client background refresh** with bounded stale data and a configurable RTU response window; that new behavior still requires ESPHome compilation and physical-display validation. Both caches are disabled by default. See [Cache behavior and configuration](CACHE.md) before enabling caching on a process where stale values could be unsafe.
 
 
 ### Captures réelles de l'interface Web v1.2.7 — quatre modes
@@ -236,7 +236,7 @@ Frame timestamps are milliseconds since ESP32 boot; they are not wall-clock time
 
 ## 11. CRC and latency diagnostics
 
-Invalid RTU CRC frames are discarded before forwarding or cache storage. The Web trace reports `CRC ERROR` with the received and calculated CRC. In TCP Server mode, an invalid RTU response is not forwarded as data; the TCP requester receives gateway exception `0x0B`. Incomplete RTU responses and timeouts are logged as `RTU ERROR`. If Silent timeout behavior is selected, the log also records `TIMEOUT SILENT` and no upstream response is sent.
+Invalid RTU CRC frames are discarded before forwarding or cache storage. The Web trace reports `CRC ERROR` with the received and calculated CRC. In TCP Server mode, an invalid RTU response is not forwarded as data; the TCP requester receives gateway exception `0x0B`. Incomplete RTU responses and timeouts are logged as `RTU ERROR`. If Silent mode is selected, errors are logged (for example, as `ERROR SILENT`) and no upstream Modbus error response is sent.
 
 The diagnostics also report per-stage timing and receive-byte observations. These are software timestamps from the ESP32, not oscilloscope measurements. See [Latency diagnostics](LATENCY_DIAGNOSTICS.md).
 
@@ -262,4 +262,4 @@ The **Client** and **Server** cache checkboxes follow the selected mode, regardl
 The earlier TCP-specific examples and screenshots in this guide remain valid for TCP, but should not be interpreted as excluding UDP.
 
 
-> **Web UI v1.2.7:** The Mode selector is transport-neutral: **Client (RTU → IP)** or **Server (IP → RTU)**. Choose **TCP** or **UDP** independently in Transport. The screenshots above show the current v1.2.7 labels.
+> **Historical gallery:** The screenshots above document the v1.2.7 interface and may not show controls introduced in newer source versions, including the optional v1.3.2 background cache refresh.
