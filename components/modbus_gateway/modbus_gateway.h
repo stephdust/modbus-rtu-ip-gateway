@@ -1876,6 +1876,9 @@ main>section.dashboard-status .status-content>div{display:flex;align-items:cente
 main>section.dashboard-status .status-content strong{color:#6fe7b1;text-align:right}
 main>section.dashboard-counters .counter-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:0 18px}
 main>section.dashboard-counters .counter-grid>div{padding:14px;background:#0b2038;border:1px solid #32638a;border-radius:9px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.manual-frame-panel,.frame-monitor-panel{padding:14px 16px;margin:14px 12px;border:1px solid #32638a;border-radius:10px;background:#0a1d32}
+.manual-frame-panel h3,.frame-monitor-panel h3{margin:0 0 12px;color:#86dcff;font-size:16px}
+.frame-monitor-panel{margin-top:20px;border-top:3px solid #3677a0}
 .frame-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px}
 main>section.dashboard-counters output{font-size:22px;color:#68dfff;font-weight:700;font-variant-numeric:tabular-nums}
 main>section.dashboard-status p,main>section.dashboard-counters p{margin:14px 18px 0}
@@ -1995,7 +1998,7 @@ main>.bottom-actions>button{height:44px!important;min-height:44px!important;max-
 <img class="brand-logo" src="/img/logo.webp" alt="Logo passerelle Modbus"><div class="brand-version">Version )HTML";
     s += String(version_.c_str());
     s += R"HTML(</div><div><div class="brand-title">Passerelle Modbus RTU ↔ IP</div><div class="brand-sub" data-fr="Passerelle série ↔ réseau" data-en="Serial ↔ network gateway">Passerelle série ↔ réseau</div></div></header>
-<section><h2><span class="section-badge section-badge-ip" aria-hidden="true"><span class="ip-art"><span class="ip-title">Modbus IP</span><span class="ip-protocol">TCP / UDP</span><svg viewBox="0 0 72 32" xmlns="http://www.w3.org/2000/svg"><path d="M5 18L21 7l7 6-16 12z" fill="#31c7ff" stroke="#bdf5ff" stroke-width="1.5"/><path d="M9 18l8-6 7 3-9 7z" fill="#00578e"/><path d="M26 17h12" stroke="#19d4ff" stroke-width="3" stroke-linecap="round"/><rect x="39" y="6" width="15" height="21" rx="3" fill="#06416e" stroke="#58d8ff" stroke-width="1.5"/><path d="M42 11h9M42 16h9M42 21h9" stroke="#62dfff" stroke-width="1.5"/><circle cx="51" cy="11" r="1" fill="#b2ff70"/><rect x="58" y="9" width="12" height="14" rx="2" fill="#077db7" stroke="#a2eeff" stroke-width="1.5"/><path d="M61 19v-4m3 4v-7m3 7v-5" stroke="#e9fcff" stroke-width="1.5"/></svg></span></span>1. Modbus IP</h2><div class="tcp-layout"><div class="tcp-col"><div><label>Mode</label><select name="mode" form="cfg">)HTML";
+<section><h2><span class="section-badge section-badge-ip" aria-hidden="true"><span class="ip-art"><span class="ip-title">Modbus IP</span><span class="ip-protocol">TCP / UDP</span><svg viewBox="0 0 72 32" xmlns="http://www.w3.org/2000/svg"><path d="M5 18L21 7l7 6-16 12z" fill="#31c7ff" stroke="#bdf5ff" stroke-width="1.5"/><path d="M9 18l8-6 7 3-9 7z" fill="#00578e"/><path d="M26 17h12" stroke="#19d4ff" stroke-width="3" stroke-linecap="round"/><rect x="39" y="6" width="15" height="21" rx="3" fill="#06416e" stroke="#58d8ff" stroke-width="1.5"/><path d="M42 11h9M42 16h9M42 21h9" stroke="#62dfff" stroke-width="1.5"/><circle cx="51" cy="11" r="1" fill="#b2ff70"/><rect x="58" y="9" width="12" height="14" rx="2" fill="#077db7" stroke="#a2eeff" stroke-width="1.5"/><path d="M61 19v-4m3 4v-7m3 7v-5" stroke="#e9fcff" stroke-width="1.5"/></svg></span></span>Modbus IP</h2><div class="tcp-layout"><div class="tcp-col"><div><label>Mode</label><select name="mode" form="cfg">)HTML";
     s += "<option value=\"CLIENT\"" + String(tcp_mode_ == "CLIENT" ? " selected" : "") + ">Client IP (RTU vers serveur)</option>";
     s += "<option value=\"SERVER\"" + String(tcp_mode_ == "SERVER" ? " selected" : "") + ">Serveur IP (client IP vers RTU)</option>";
     s += R"HTML(</select></div><div><label>Transport</label><select name="transport" form="cfg"><option value="TCP")HTML";
@@ -2032,7 +2035,7 @@ main>.bottom-actions>button{height:44px!important;min-height:44px!important;max-
     s += R"HTML("></div><p class="muted">Mode adaptatif : TTL calculé par requête à partir de la période observée (80 %, entre 50 et 10 000 ms). Valeur initiale : TTL fixe.</p></div></div>
 <div class="muted tcp-note">Le cache concerne uniquement les lectures Modbus (fonctions 01 à 04). L’option affichée correspond au mode Client/Serveur sélectionné ; le réglage de l’autre mode est conservé. Les écritures réussies invalident les réponses mémorisées pour l’Unit ID concerné. 64 entrées maximum.</div>
 </div></section>
-<section><h2><span class="section-badge section-badge-rtu" aria-hidden="true"><img src="/img/modbus-rtu.jpg" alt=""><small>RTU</small></span>2. Paramètres Modbus RTU</h2><div class="grid">
+<section><h2><span class="section-badge section-badge-rtu" aria-hidden="true"><img src="/img/modbus-rtu.jpg" alt=""><small>RTU</small></span>Paramètres Modbus RTU</h2><div class="grid">
 <div><label>Baudrate</label><select name="baud" form="cfg">)HTML";
     const uint32_t baud_opts[]={1200,2400,4800,9600,19200,38400,57600,115200};
     for (auto b: baud_opts) { s += "<option value=\""+String(b)+"\""; if (b==cfg_baud_) s+=" selected"; s+=">"+String(b)+"</option>"; }
@@ -2046,7 +2049,7 @@ main>.bottom-actions>button{height:44px!important;min-height:44px!important;max-
 <div id="rtu_id_mode_field"><label>Identifiant Modbus RTU</label><select name="idmode" form="cfg"><option value="auto")HTML"; if (!manual_rtu_id_) s += " selected"; s += R"HTML(>Automatique (adresse reçue)</option><option value="manual")HTML"; if (manual_rtu_id_) s += " selected"; s += R"HTML(>Manuel</option></select></div>
 <div id="rtu_id_manual_field"><label>ID RTU manuel (1–247)</label><input name="rtuid" form="cfg" type="number" min="1" max="247" value=")HTML"; s += String(configured_rtu_id_); s += R"HTML("></div>
 </div></section>
-<section><h2><span class="section-badge section-badge-cfg" aria-hidden="true"><img src="/img/esp32.jpg" alt=""><small>ESP32</small></span>3. Configuration</h2>
+<section><h2><span class="section-badge section-badge-cfg" aria-hidden="true"><img src="/img/esp32.jpg" alt=""><small>ESP32</small></span>Configuration</h2>
 <div class="grid">
 <div><label>GPIO TX (-1 = automatique)</label><input name="tx" form="cfg" type="number" min="-1" max="48" value=")HTML"; s += String(tx_gpio_); s += R"HTML("></div>
 <div><label>GPIO RX (-1 = automatique)</label><input name="rx" form="cfg" type="number" min="-1" max="48" value=")HTML"; s += String(rx_gpio_); s += R"HTML("></div>
@@ -2068,17 +2071,18 @@ main>.bottom-actions>button{height:44px!important;min-height:44px!important;max-
 <section class="dashboard-counters" aria-label="Diagnostics des trames"><h2>▥ <span data-fr="Compteurs / Diagnostics" data-en="Counters / diagnostics">Compteurs / Diagnostics</span></h2><div class="counter-grid"><div><strong>RTU RX</strong><output id="dashRtuRx">0</output></div><div><strong>RTU TX</strong><output id="dashRtuTx">0</output></div><div><strong>IP RX</strong><output id="dashIpRx">0</output></div><div><strong>IP TX</strong><output id="dashIpTx">0</output></div><div><strong data-fr="Cache (entrées)" data-en="Cache (entries)">Cache (entrées)</strong><output id="dashCacheEntries">0</output></div><div><strong data-fr="TTL effectif" data-en="Effective TTL">TTL effectif</strong><output id="dashCacheTtl">—</output></div></div><p class="muted" data-fr="Nombre d’entrées correspondantes parmi les 64 dernières lignes du journal ; ce ne sont pas des compteurs cumulés." data-en="Matching entries in the most recent 64 log lines; these are not lifetime counters.">Nombre d’entrées correspondantes parmi les 64 dernières lignes du journal ; ce ne sont pas des compteurs cumulés.</p><p class="muted" data-fr="Cache : nombre d’entrées valides du mode actif (0 si désactivé). TTL : plage effective des entrées en cache ; elle varie en mode adaptatif." data-en="Cache: valid entries for the active mode (0 when disabled). TTL: effective range for cached entries; varies in adaptive mode.">Cache : nombre d’entrées valides du mode actif (0 si désactivé). TTL : plage effective des entrées en cache ; elle varie en mode adaptatif.</p></section>
 <form id="cfg" method="POST" action="/save"><input type="hidden" id="form_lang" name="lang" value="fr"></form>
 <form id="rebootForm" method="POST" action="/reboot"><input type="hidden" id="reboot_lang" name="lang" value="fr"></form>
-<section><h2><span class="section-badge section-badge-log" aria-hidden="true"><img src="/img/frame-diagnostics.jpg" alt=""><small>LOG</small></span>4. Debug des trames</h2>
+<section><h2><span class="section-badge section-badge-log" aria-hidden="true"><img src="/img/frame-diagnostics.jpg" alt=""><small>LOG</small></span>Debug des trames</h2>
 <p class="muted">RTU RX/TX et IP TCP/UDP TX/RX · rafraîchissement automatique toutes les 1,5 s</p>
 <p class="muted">Les tentatives de connexion TCP et les erreurs réseau sont également affichées dans cette fenêtre.</p>
 
-<div style="margin-top:14px"><label for="rtuFrame">Trame RTU à envoyer (hexadécimal, avec adresse et CRC, ex. 0B 03 00 00 00 01 84 A0)</label>
+<div class="manual-frame-panel"><h3 data-fr="Envoi manuel d’une trame Modbus IP" data-en="Manual Modbus IP frame transmission">Envoi manuel d’une trame Modbus IP</h3><label for="rtuFrame">Trame RTU à envoyer (hexadécimal, avec adresse et CRC, ex. 0B 03 00 00 00 01 84 A0)</label>
 <input id="rtuFrame" placeholder="0B 03 00 00 00 01 ... CRC" autocomplete="off">
 <button type="button" onclick="sendManual()" style="margin-top:10px">Envoyer au serveur TCP</button></div>
-<p class="muted">Réponse du serveur Modbus IP :</p><pre id="manualResponse">Aucune requête manuelle</pre>
+<p class="muted">Réponse du serveur Modbus IP :</p><pre id="manualResponse">Aucune requête manuelle</pre></div>
+<div class="frame-monitor-panel"><h3 data-fr="Écoute et capture des trames RTU / IP" data-en="RTU / IP frame monitoring and capture">Écoute et capture des trames RTU / IP</h3>
 <div class="frame-actions"><button id="listenBtn" type="button" onclick="toggleListen()">Arrêter l’écoute RTU</button><button type="button" onclick="clearFrames()">Vider l’affichage des trames</button><a class="button-link" href="/frames.txt">Exporter la capture des trames (.txt)</a><span id="listenState">Écoute RTU active</span></div>
 <p class="muted">L’export contient les 64 dernières entrées mémorisées, y compris les mesures de latence.</p>
-<pre id="frames">Chargement des trames…</pre></section>
+<pre id="frames">Chargement des trames…</pre></div></section>
 <script>
 let currentLanguage='fr';
 const translations={
@@ -2091,7 +2095,7 @@ const translations={
 'GPIO TX (-1 = automatique)':'TX GPIO (-1 = automatic)','GPIO RX (-1 = automatique)':'RX GPIO (-1 = automatic)','GPIO DE/RE/EN (-1 = automatique)':'DE/RE/EN GPIO (-1 = automatic)',
 'Identifiant Modbus RTU':'Modbus RTU device ID','Automatique (adresse reçue)':'Automatic (received address)','Manuel':'Manual','ID RTU manuel (1–247)':'Manual RTU ID (1–247)',
 'Enregistrer / appliquer':'Save / apply','Enregistrement global':'Apply all settings','Les paramètres des sections 1, 2 et 3 seront enregistrés ensemble.':'Settings in sections 1, 2 and 3 will be saved together.','-1 = sélection automatique de la broche. Les paramètres sont enregistrés en mémoire. Toute modification des GPIO redémarre l’ESP32.':'-1 = automatic pin selection. Settings are stored in memory. Any GPIO change restarts the ESP32.',
-'Paramètres Modbus RTU':'Modbus RTU settings','3. Configuration':'3. Configuration','4. Debug des trames':'4. Frame diagnostics',
+'Paramètres Modbus RTU':'Modbus RTU settings','Configuration':'Configuration','Debug des trames':'Frame diagnostics',
 'RTU RX/TX et IP TCP/UDP TX/RX · rafraîchissement automatique toutes les 1,5 s':'RTU RX/TX and TCP TX/RX · automatic refresh every 1.5 s',
 'Les tentatives de connexion TCP et les erreurs réseau sont également affichées dans cette fenêtre.':'TCP connection attempts and network errors are also displayed in this window.',
 'Arrêter l’écoute RTU':'Stop RTU listening','Reprendre l’écoute RTU':'Resume RTU listening','Écoute RTU active':'RTU listening','Écoute RTU suspendue':'RTU listening paused','Erreur de commande':'Command error',
@@ -2142,7 +2146,7 @@ const translations={
 'Une transaction RTU/TCP est en cours. Réessayez après sa réponse.':'An RTU/TCP transaction is in progress. Retry after its response.',
 'Réponse TCP (PDU) :':'TCP response (PDU):','Réponse RTU complète :':'Complete RTU response:',
 'Passerelle série ↔ réseau':'Serial ↔ network gateway','Passerelle Modbus RTU ↔ IP':'Modbus RTU ↔ IP Gateway',
-'1. Modbus IP':'1. Modbus IP','2. Paramètres Modbus RTU':'2. Modbus RTU settings','3. Configuration':'3. Configuration','4. Debug des trames':'4. Frame diagnostics'
+'Modbus IP':'Modbus IP','Paramètres Modbus RTU':'Modbus RTU settings','Configuration':'Configuration','Debug des trames':'Frame diagnostics'
 };
 function tr(fr,en){return currentLanguage==='fr'?fr:en;}
 function translateValue(value){const pairs=Object.entries(translations).map(([fr,en])=>currentLanguage==='en'?[fr,en]:[en,fr]).sort((a,b)=>b[0].length-a[0].length);let out=value;for(const [from,to] of pairs){if(from)out=out.split(from).join(to);}return out;}
