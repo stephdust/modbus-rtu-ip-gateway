@@ -8,6 +8,65 @@ from esphome.core import CORE
 import esphome.config_validation as cv
 from esphome.const import CONF_ID
 
+
+# Add a small, firmware-embedded link enhancement to ESPHome's v3 page.
+# The official frontend remains embedded by web_server.local: true; no CDN,
+# manually copied JS file, or network request is required at runtime.
+# This is deliberately limited to the HTML index builder, not the HTTP server.
+def _install_offline_gateway_link():
+    from esphome.components import web_server
+
+    if getattr(web_server.build_index_html, "_modbus_gateway_link", False):
+        return
+
+    original = web_server.build_index_html
+    script = r"""
+<script>
+(() => {
+  const url = location.protocol + "//" + location.hostname + "/";
+  function linkify(root) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const matches = [];
+    while (walker.nextNode()) {
+      const node = walker.currentNode;
+      if (node.nodeValue.trim() !== url) continue;
+      const parent = node.parentElement;
+      if (!parent || parent.closest("a,script,style,textarea")) continue;
+      matches.push(node);
+    }
+    for (const node of matches) {
+      const a = document.createElement("a");
+      a.href = url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.textContent = url;
+      a.style.cssText = "color:#2196f3;text-decoration:underline;overflow-wrap:anywhere";
+      node.replaceWith(a);
+    }
+    for (const el of root.querySelectorAll("*")) {
+      if (el.shadowRoot) linkify(el.shadowRoot);
+    }
+  }
+  const update = () => linkify(document);
+  if (document.readyState === "loading")
+    document.addEventListener("DOMContentLoaded", update, {once:true});
+  else update();
+  setInterval(update, 1500);
+})();
+</script>"""
+
+    def build_index_html_with_link(config):
+        html = original(config)
+        if config.get("version") != 3:
+            return html
+        return html.replace("</body>", script + "</body>", 1)
+
+    build_index_html_with_link._modbus_gateway_link = True
+    web_server.build_index_html = build_index_html_with_link
+
+
+_install_offline_gateway_link()
+
 gateway_ns = cg.esphome_ns.namespace("modbus_gateway")
 ModbusGateway = gateway_ns.class_("ModbusGateway", cg.Component)
 
