@@ -320,32 +320,40 @@ class ModbusGateway : public Component {
     uint16_t quantity = 0;
     if (!is_cacheable_read_request_(request_pdu, start_address, quantity)) return false;
     const uint32_t now = millis();
+    ResponseCacheEntry *freshest = nullptr;
     for (auto &entry : response_cache_) {
       if (!entry.valid) continue;
-      if (entry.direction == direction && entry.unit_id == unit_id &&
-          entry.function_code == request_pdu[0] && entry.start_address == start_address &&
-          entry.quantity == quantity) {
-        // Check the ORIGINAL TTL first. Updating adaptive TTL before this
-        // test can revive an already expired entry and serve stale data.
-        if (gateway_policy::cache_expired(
-                now, entry.stored_at_ms,
-                cache_ttl_adaptive_ ? entry.ttl_ms : cache_ttl_ms_)) {
-          entry.valid = false;
-          continue; // tolerate any stale duplicate left in RAM
-        }
-        const uint32_t elapsed = uint32_t(now - entry.last_request_ms);
-        if (cache_ttl_adaptive_ && entry.last_request_ms != 0 &&
-            elapsed >= 50U && elapsed <= 60000U) {
-          entry.observed_interval_ms = elapsed;
-          entry.ttl_ms = adaptive_ttl_(elapsed);
-        }
-        entry.last_request_ms = now;
-        response_pdu.assign(entry.response_pdu, entry.response_pdu + entry.response_length);
-        age_ms = uint32_t(now - entry.stored_at_ms);
-        return true;
+      if (entry.direction != direction || entry.unit_id != unit_id ||
+          entry.function_code != request_pdu[0] || entry.start_address != start_address ||
+          entry.quantity != quantity) continue;
+      // Check ORIGINAL lifetime before any adaptive TTL updates.
+      if (gateway_policy::cache_expired(
+              now, entry.stored_at_ms,
+              cache_ttl_adaptive_ ? entry.ttl_ms : cache_ttl_ms_)) {
+        entry.valid = false;
+        continue;
+      }
+      // Prefer the newest key if duplicates exist after a firmware upgrade.
+      if (!freshest || uint32_t(now - entry.stored_at_ms) <
+                       uint32_t(now - freshest->stored_at_ms)) {
+        if (freshest) freshest->valid = false;
+        freshest = &entry;
+      } else {
+        entry.valid = false;
       }
     }
-    return false;
+    if (!freshest) return false;
+    const uint32_t elapsed = uint32_t(now - freshest->last_request_ms);
+    if (cache_ttl_adaptive_ && freshest->last_request_ms != 0 &&
+        elapsed >= 50U && elapsed <= 60000U) {
+      freshest->observed_interval_ms = elapsed;
+      freshest->ttl_ms = adaptive_ttl_(elapsed);
+    }
+    freshest->last_request_ms = now;
+    response_pdu.assign(freshest->response_pdu,
+                        freshest->response_pdu + freshest->response_length);
+    age_ms = uint32_t(now - freshest->stored_at_ms);
+    return true;
   }
 
   void cache_store_(uint8_t direction, uint8_t unit_id,
