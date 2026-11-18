@@ -1,6 +1,6 @@
 # Modbus RTU/IP Gateway — TCP and UDP implementation
 
-Version **1.2.5** on **`main`** includes TCP and UDP Client/Server transport modes. The earlier TCP-only v1.1.15 is part of the repository history; this document originated on the feature branch and now describes the merged implementation.
+Version **1.2.6** on **`main`** includes TCP and UDP Client/Server transport modes. The earlier TCP-only v1.1.15 is part of the repository history; this document originated on the feature branch and now describes the merged implementation.
 
 ## Configuration
 
@@ -8,7 +8,7 @@ In the custom component YAML, use `transport: TCP` (default) or `transport: UDP`
 
 - **UDP Client**: incoming Modbus RTU requests are encoded as MBAP datagrams and forwarded to the configured IPv4 server. Replies are accepted only from the configured IP/port with matching transaction and Unit IDs. No automatic retries are performed.
 - **UDP Server**: binds the configured port, validates one complete MBAP ADU per datagram, forwards it to the RTU bus, and sends the reply to the source IP/port. Automatic RTU ID mode uses the MBAP Unit ID; manual mode overrides it. The MBAP Unit ID in the response remains the original value.
-- **Cache**: the existing client/server read caches are shared across the selected transport, and writes invalidate matching entries. Version 1.2.5 includes a Fixed/Adaptive TTL selector (adaptive = 80% of observed per-request polling interval, bounded to 50–10,000 ms); this change has not yet been compiled or tested on hardware.
+- **Cache**: the existing client/server read caches are shared across the selected transport, and writes invalidate matching entries. Version 1.2.6 includes a Fixed/Adaptive TTL selector (adaptive = 80% of observed per-request polling interval, bounded to 50–10,000 ms); this change has not yet been compiled or tested on hardware.
 - **TCP**: remains the default transport.
 
 ## Validation status (15 November 2026)
@@ -33,6 +33,6 @@ The header uses the RTU ↔ IP gateway artwork with caches on both sides. The fo
 
 ## État du développement (français)
 
-La branche a été compilée et installée sur ESP32-S3. Selon les essais communiqués par l'utilisateur, les **quatre modes TCP/UDP Client/Serveur fonctionnent**, y compris les lectures FC03/04, écritures FC06/16, ID RTU automatique/manuel et cache en UDP. Les tests de robustesse restent à effectuer. La version TCP/UDP v1.2.1 a été publiée. Le code v1.2.5 sur `main` ajoute le TTL adaptatif, qui reste à compiler et valider.
+La branche a été compilée et installée sur ESP32-S3. Selon les essais communiqués par l'utilisateur, les **quatre modes TCP/UDP Client/Serveur fonctionnent**, y compris les lectures FC03/04, écritures FC06/16, ID RTU automatique/manuel et cache en UDP. Les tests de robustesse restent à effectuer. La version TCP/UDP v1.2.1 a été publiée. Le code v1.2.6 sur `main` ajoute le TTL adaptatif, qui reste à compiler et valider.
 
 Dans l'interface, **Connexion TCP persistante** est affichée uniquement en **TCP Client** et masquée en TCP Serveur, UDP Client et UDP Serveur ; le changement est immédiat. Le réglage TCP enregistré est conservé lors du passage en UDP. Les quatre petits logos sont harmonisés avec le logo principal, et le pictogramme Modbus IP indique désormais **TCP/UDP**.
