@@ -44,7 +44,7 @@ For those same remote-response timeouts, the gateway sends **no RTU response** i
 
 ### Scope of the setting
 
-The Silent option suppresses only the response for a remote device/server that did not provide a complete response within the configured timeout. It does not suppress other errors. For example, Client-mode connection or protocol failures continue to use gateway exception `0x0A`; an invalid RTU CRC in Server mode is still rejected and reported with gateway exception `0x0B`. A corrupt RTU request received in Client mode is discarded before forwarding. The diagnostics log records silent timeouts as `TIMEOUT SILENT` alongside the relevant `TCP ERROR` or `RTU ERROR` event.
+The Silent option suppresses **all Modbus error responses**: client-mode connection failures, malformed TCP/UDP replies, timeouts, received Modbus exceptions and server-mode invalid/missing RTU replies. Normal successful responses are still forwarded. The diagnostics log records such errors as `ERROR SILENT` along with `TCP ERROR`, `UDP ERROR`, `RTU ERROR` or `CRC ERROR` where applicable. Invalid RTU master requests are always discarded without forwarding.
 
 ## Multi-client scheduling
 
@@ -90,7 +90,7 @@ Other function codes are not covered by the current RTU request-length parser an
 
 ## RTU CRC validation
 
-The gateway validates the Modbus RTU CRC before forwarding any received RTU frame or storing a response in the cache. Invalid RTU master requests in TCP Client mode are discarded and recorded as `CRC ERROR`. Invalid RTU slave responses in TCP Server mode are discarded, recorded as `CRC ERROR`, and reported to the TCP requester with gateway exception `0x0B` (Target Device Failed to Respond), regardless of the Silent timeout setting. Incomplete responses/timeouts are logged separately as `RTU ERROR`; when Silent is selected, the timeout also produces `TIMEOUT SILENT` and no upstream response. Modbus TCP frames use the MBAP header and do not carry an RTU CRC.
+The gateway validates **CRC16**, slave Unit ID, function code, reply length and byte count before forwarding or caching any downstream Modbus RTU reply (TCP Server and UDP Server). CRC-invalid and malformed RTU frames are discarded, never forwarded and never cached. In Standard mode, the gateway can generate a *new* exception PDU `0x0B` in place of the invalid reply; in Silent mode it sends **nothing**. An incoming CRC-invalid RTU master request is discarded in Client mode before forwarding or looking up cache. Valid slave exception responses are never cached; they are forwarded only in Standard mode. Modbus TCP/UDP ADUs have an MBAP header and **no RTU CRC**, so their PDU is checked structurally.
 
 
 ## TCP Client asynchronous response handling
