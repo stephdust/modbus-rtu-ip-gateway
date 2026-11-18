@@ -24,7 +24,7 @@ The Web interface offers a **TTL mode** selector whenever the active Client/Serv
 - **Fixed TTL** (default, backward compatible): manually enter a TTL from 50 to 10,000 ms (default 500 ms).
 - **Adaptive TTL**: estimate the polling interval separately for each cache key (direction, Unit ID, function, start address and quantity), then choose a TTL of 80% of the observed interval, bounded to 50–10,000 ms. Until an interval has been observed, the configured fixed TTL is used as a fallback.
 
-Fixed/adaptive TTL cache behavior has been observed in user-provided gateway logs; this does not constitute full hardware or functional certification. The separate bounded background-refresh option introduced in source v1.3.2 has not yet been ESPHome-compiled or verified with the physical display. The selected TTL mode is saved in ESP32 NVS. Adaptive estimates are held only in RAM and reset when the cache is cleared. The age of a cached response is always measured from the time it was fetched, never from a cache hit. Writes continue to invalidate affected cached reads.
+Fixed/adaptive TTL cache behavior has been observed in user-provided gateway logs; this does not constitute full hardware or functional certification. The separate bounded background-refresh option introduced in source v1.3.2 has since been reported by the maintainer to work well on a physical RTU display with Flow.io as the Modbus TCP server. It has not undergone independent endurance or full regression tests. The selected TTL mode is saved in ESP32 NVS. Adaptive estimates are held only in RAM and reset when the cache is cleared. The age of a cached response is always measured from the time it was fetched, never from a cache hit. Writes continue to invalidate affected cached reads.
 
 **Important:** Adaptive TTL reduces unnecessary refreshes for repeated reads, but cannot guarantee fresh values if device data changes between polls. For safety-critical or rapidly changing registers, disable the cache or use a short fixed TTL. Adaptive behavior should be validated with the actual polling workload and device before production use.
 
@@ -120,16 +120,15 @@ serving for measurements that require always-current process/safety values.
 Logs include `CACHE STALE`, `CACHE REFRESH`, `CACHE REFRESH OK`,
 `CACHE REFRESH ERROR` and `RTU DEADLINE`.
 
-This implementation is source- and host-test-reviewed but still requires an
-ESPHome compilation and validation with the real display and RS485 bus.
+**Field result (18 November 2026):** the maintainer reports that the new v1.3.2 cache works well with the physical RTU display and the Flow.io Modbus TCP server. This confirms operation in that installation, not general correctness across every mode, loss-of-network condition or safety-critical register. Host-side test cases exist for cache ageing and RTU deadlines, but no independent long-run hardware stress test is documented.
 
 ## Data freshness warning
 
-A cache hit intentionally returns a previous valid device response. The data can be as old as the applicable fixed or adaptive TTL. Choose a TTL appropriate for the process and its update rate. If stale data is unsafe or unacceptable, leave the corresponding mode's cache disabled. The cache is a performance option, not a substitute for device-side update timing or application-level freshness checks.
+A cache hit intentionally returns a previous validated device response. In normal mode the data can be as old as the applicable fixed or adaptive TTL. In opt-in TCP Client background-refresh mode, stale responses can be served up to the configured **maximum data age**. Choose a TTL appropriate for the process and its update rate. If stale data is unsafe or unacceptable, leave the corresponding mode's cache disabled. The cache is a performance option, not a substitute for device-side update timing or application-level freshness checks.
 
 ## Interaction with asynchronous Client TCP processing
 
-From component release 1.1.9, normal RTU-originated Client TCP transactions receive the remote TCP response cooperatively through the ESPHome loop. Cache hits remain immediate and do not open or use the TCP socket. A manual transaction initiated from the Web UI still uses the synchronous diagnostic helper; it is refused with HTTP 409 while a normal Client TCP transaction is already in progress so that both operations cannot read from the same TCP stream concurrently.
+From component release 1.1.9, normal RTU-originated Client TCP transactions receive the remote TCP response cooperatively through the ESPHome loop. Ordinary fresh cache hits remain immediate and do not open or use the TCP socket. In opt-in v1.3.2 background-refresh mode, stale hits still receive immediate RTU replies and can separately trigger a TCP refresh; that refresh never sends an unsolicited RTU response. A manual transaction initiated from the Web UI still uses the synchronous diagnostic helper; it is refused with HTTP 409 while a normal Client TCP transaction is already in progress so that both operations cannot read from the same TCP stream concurrently.
 
 ## TCP and UDP (v1.2.7)
 
