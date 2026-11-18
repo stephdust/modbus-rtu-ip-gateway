@@ -173,6 +173,15 @@
 
 # Changelog
 
+## 1.3.1 — CRC-first forwarding, all-error silence and cache correctness (2026-11-18; source on `main`)
+
+- Silent now suppresses **every Modbus error response** in Client and Server modes, TCP and UDP; successful replies are unaffected.
+- CRC-invalid RTU frames and replies with wrong Unit ID or malformed PDU are never forwarded or cached. Standard mode may generate a new gateway exception (not relay corrupt bytes).
+- Added a host-testable policy and C++11 tests covering corrupt CRC, exception handling, reply lengths, cache TTL expiry and duplicate cache keys.
+- Fixed cache lookup/storage to favor the freshest unexpired key and avoid extending expired data with adaptive TTL updates. Strict response validation gates cache insertion.
+- Updated FR/EN Web labels; ESPHome firmware/hardware validation remains pending.
+
+
 ## 1.1.3
 
 - Client TCP: no longer blocks connection attempts based only on `WiFi.status()`.
