@@ -327,11 +327,11 @@ class ModbusGateway : public Component {
           entry.observed_interval_ms = elapsed;
           entry.ttl_ms = adaptive_ttl_(elapsed);
         }
-        entry.last_request_ms = now;
         if (uint32_t(now - entry.stored_at_ms) >= (cache_ttl_adaptive_ ? entry.ttl_ms : cache_ttl_ms_)) {
           entry.valid = false;
           return false;
         }
+        entry.last_request_ms = now;
         response_pdu.assign(entry.response_pdu, entry.response_pdu + entry.response_length);
         age_ms = uint32_t(now - entry.stored_at_ms);
         return true;
