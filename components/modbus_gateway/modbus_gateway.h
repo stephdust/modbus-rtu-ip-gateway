@@ -996,6 +996,22 @@ class ModbusGateway : public Component {
       fail_client_transaction_("Invalid Modbus TCP response PDU (function, length, byte count or echoed write).");
       return;
     }
+    if (client_txn_.background_refresh) {
+      // A successful background read ONLY updates the validated cache.
+      // Never send an RTU frame here: the master already got its reply.
+      // An exception is a failed refresh, regardless of configured error mode.
+      if (success && cacheable_read && cache_client_enabled_) {
+        cache_store_(CACHE_DIRECTION_CLIENT, unit_id, request_pdu, response_pdu);
+        ++background_refresh_succeeded_;
+        add_event_("CACHE REFRESH OK", String("Validated TCP refresh stored; Unit ID=") +
+                   String(unit_id) + "; Function=" + String(request_pdu[0]) + ".");
+      } else {
+        ++background_refresh_failed_;
+        add_event_("CACHE REFRESH ERROR", "TCP refresh returned an exception or non-cacheable response; no RTU TX.");
+      }
+      reset_client_transaction_();
+      return;
+    }
     if (exception && silent_on_timeout_) {
       add_event_("ERROR SILENT", String("Client mode | Modbus exception 0x") +
                  String(response_pdu[1], HEX) + " suppressed; no RTU TX.");
@@ -1019,7 +1035,9 @@ class ModbusGateway : public Component {
                " us; TCP response wait=" + String(response_us) + " us; TCP first byte=" +
                String(first_byte_us) + " us; TCP first-to-last=" + String(response_span_us) +
                " us; result=OK.");
-    const uint32_t rtu_tx_us = send_rtu_(unit_id, response_pdu);
+    const uint32_t rtu_tx_us =
+        client_rtu_reply_is_timely_(response_pdu.size(), end_to_end_started_us)
+        ? send_rtu_(unit_id, response_pdu) : 0U;
     add_event_("TIMING", String("CLIENT RTU-to-RTU total=") +
                String(micros() - end_to_end_started_us) + " us; RTU response TX=" +
                String(rtu_tx_us) + " us.");
@@ -1073,6 +1091,13 @@ class ModbusGateway : public Component {
                " us; TCP response wait=" + String(response_us) + " us; TCP first byte=" +
                String(first_byte_us) + " us; TCP first-to-last=" + String(response_span_us) +
                " us; result=ERROR.");
+    if (client_txn_.background_refresh) {
+      ++background_refresh_failed_;
+      add_event_("CACHE REFRESH ERROR", String("Background TCP refresh failed: ") +
+                 reason + " No RTU TX.");
+      reset_client_transaction_();
+      return;
+    }
     if (silent_on_timeout_) {
       add_event_("ERROR SILENT", String("Client mode | No RTU reply for failed IP transaction; Unit ID=") +
                  String(unit_id) + "; Function=" + String(function) +
@@ -1082,7 +1107,9 @@ class ModbusGateway : public Component {
     } else {
       const uint8_t exception_code = is_timeout ? 0x0B : 0x0A;
       std::vector<uint8_t> exception = {uint8_t(function | 0x80), exception_code};
-      const uint32_t rtu_tx_us = send_rtu_(unit_id, exception);
+      const uint32_t rtu_tx_us =
+          client_rtu_reply_is_timely_(exception.size(), end_to_end_started_us)
+          ? send_rtu_(unit_id, exception) : 0U;
       add_event_("TIMING", String("CLIENT failed transaction total=") +
                  String(micros() - end_to_end_started_us) + " us; exception RTU TX=" +
                  String(rtu_tx_us) + " us; exception=" + String(exception_code, HEX) + ".");
