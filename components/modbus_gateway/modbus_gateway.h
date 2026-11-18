@@ -357,31 +357,9 @@ class ModbusGateway : public Component {
     if (!is_cacheable_read_request_(request_pdu, start_address, quantity)) return;
 
     const uint32_t now = millis();
-    ResponseCacheEntry *matching = nullptr;
-    ResponseCacheEntry *vacant = nullptr;
-    ResponseCacheEntry *oldest = nullptr;
-    uint32_t oldest_age = 0;
-    for (auto &entry : response_cache_) {
-      if (entry.valid && gateway_policy::cache_expired(
-              now, entry.stored_at_ms,
-              cache_ttl_adaptive_ ? entry.ttl_ms : cache_ttl_ms_))
-        entry.valid = false;
-      if (entry.valid && entry.direction == direction && entry.unit_id == unit_id &&
-          entry.function_code == request_pdu[0] && entry.start_address == start_address &&
-          entry.quantity == quantity) {
-        // ALWAYS update the matching key, even if a free slot precedes it.
-        // Otherwise duplicate keys cause old responses to win future lookups.
-        if (!matching) matching = &entry;
-        else entry.valid = false; // eliminate legacy duplicates
-        continue;
-      }
-      if (!entry.valid && !vacant) vacant = &entry;
-      if (entry.valid) {
-        const uint32_t age = uint32_t(now - entry.stored_at_ms);
-        if (!oldest || age > oldest_age) { oldest = &entry; oldest_age = age; }
-      }
-    }
-    ResponseCacheEntry *target = matching ? matching : (vacant ? vacant : oldest);
+    ResponseCacheEntry *target = gateway_policy::cache_store_slot(
+        response_cache_, RESPONSE_CACHE_CAPACITY, now, direction, unit_id,
+        request_pdu[0], start_address, quantity, cache_ttl_adaptive_, cache_ttl_ms_);
     if (!target) return;
 
     const bool same_key = target->direction == direction && target->unit_id == unit_id &&
