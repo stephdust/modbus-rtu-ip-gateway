@@ -1,6 +1,7 @@
 ## 1.2.6 — Manual frame response layout (2026-11-18; source on `main`, release publication pending)
 
 - Keep the manual Modbus IP response label and response output inside the same panel as the manual frame input and Send button.
+- Rebuilt four v1.2.6 simulated Web UI illustrations (TCP/UDP, Client/Server), reflecting unnumbered headings, adaptive TTL, and the separated manual send / frame monitoring panels; these are illustrations, not browser screenshots.
 - Fix premature panel closing markup. No Modbus protocol behavior changes. Build and hardware validation pending.
 
 ## 1.2.5 — Clearer Web UI sections (2026-11-18; source on `main`, release publication pending)
