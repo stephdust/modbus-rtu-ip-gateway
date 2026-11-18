@@ -176,6 +176,17 @@ Invalid RTU CRC frames are discarded before forwarding or cache storage. The Web
 
 The diagnostics also report per-stage timing and receive-byte observations. These are software timestamps from the ESP32, not oscilloscope measurements. See [Latency diagnostics](LATENCY_DIAGNOSTICS.md).
 
+## Reference screenshot: actual Web UI v1.2.6
+
+The maintainer provided a four-page capture of the **actual** French Web interface. It is the visual reference for future documentation illustrations. The four pages cover:
+
+1. **Header and Modbus IP** — gateway artwork, version, operating mode, transport, server address and port, timeout, persistent TCP connection, timeout behavior, Client cache enablement, fixed/adaptive TTL and explanatory text.
+2. **Modbus RTU, Configuration and Status** — baud, data bits, parity, stop bits, GPIO TX/RX/DE-RE, gateway and Wi-Fi status, destination TCP, connection count and connections table.
+3. **Counters and manual transmission** — RTU RX/TX, IP RX/TX, valid cache entries and effective TTL; separate manual Modbus IP frame input, send button and response inside the same panel.
+4. **Frame capture and footer** — RTU listening, clear and TXT export buttons, active listening status, color-coded log and bottom theme/language/save/restart/refresh controls.
+
+**Image provenance:** the four SVGs linked below are *simulations*, not these actual screenshots. The source PDF is user-provided and is not hosted in this repository; it must not be represented as an actual browser screenshot. Replace the simulations with real PNG images only after the screenshots are uploaded to this repository.
+
 ## TCP / UDP configuration (v1.2.6)
 
 **Required compatibility check:** Configure the gateway's IP transport to match the remote Modbus IP endpoint: **TCP Client ↔ TCP Server** or **UDP Client ↔ UDP Server**. TCP and UDP are different transport protocols, even when both endpoints use port **502**. A TCP client cannot exchange Modbus requests with a UDP-only server, and vice versa. For the gateway's **IP Server** mode, the external IP client must likewise select the matching TCP or UDP transport.
