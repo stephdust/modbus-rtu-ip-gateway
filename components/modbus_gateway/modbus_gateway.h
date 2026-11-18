@@ -150,6 +150,7 @@ class ModbusGateway : public Component {
   bool cache_client_enabled_{false};
   bool cache_server_enabled_{false};
   uint32_t cache_ttl_ms_{500};
+  bool cache_ttl_adaptive_{false};
   bool manual_rtu_id_{false};
   uint8_t configured_rtu_id_{1};
   ::Preferences prefs_;
@@ -247,6 +248,9 @@ class ModbusGateway : public Component {
     uint16_t quantity{0};
     uint16_t response_length{0};
     uint32_t stored_at_ms{0};
+    uint32_t ttl_ms{500};
+    uint32_t last_request_ms{0};
+    uint32_t observed_interval_ms{0};
     uint8_t response_pdu[RESPONSE_CACHE_MAX_PDU]{};
   };
   ResponseCacheEntry response_cache_[RESPONSE_CACHE_CAPACITY];
@@ -300,6 +304,12 @@ class ModbusGateway : public Component {
     return response_pdu[1] == expected_bytes && response_pdu.size() == expected_bytes + 2;
   }
 
+  static uint32_t adaptive_ttl_(uint32_t interval_ms) {
+    // Keep cached reads shorter than the observed polling period, bounded to 50..10000 ms.
+    const uint32_t ttl = (interval_ms / 5U) * 4U;
+    return ttl < 50U ? 50U : (ttl > 10000U ? 10000U : ttl);
+  }
+
   bool cache_lookup_(uint8_t direction, uint8_t unit_id,
                      const std::vector<uint8_t> &request_pdu,
                      std::vector<uint8_t> &response_pdu, uint32_t &age_ms) {
@@ -309,13 +319,19 @@ class ModbusGateway : public Component {
     const uint32_t now = millis();
     for (auto &entry : response_cache_) {
       if (!entry.valid) continue;
-      if (uint32_t(now - entry.stored_at_ms) >= cache_ttl_ms_) {
-        entry.valid = false;
-        continue;
-      }
       if (entry.direction == direction && entry.unit_id == unit_id &&
           entry.function_code == request_pdu[0] && entry.start_address == start_address &&
           entry.quantity == quantity) {
+        const uint32_t elapsed = uint32_t(now - entry.last_request_ms);
+        if (cache_ttl_adaptive_ && entry.last_request_ms != 0 && elapsed >= 50U && elapsed <= 60000U) {
+          entry.observed_interval_ms = elapsed;
+          entry.ttl_ms = adaptive_ttl_(elapsed);
+        }
+        entry.last_request_ms = now;
+        if (uint32_t(now - entry.stored_at_ms) >= (cache_ttl_adaptive_ ? entry.ttl_ms : cache_ttl_ms_)) {
+          entry.valid = false;
+          return false;
+        }
         response_pdu.assign(entry.response_pdu, entry.response_pdu + entry.response_length);
         age_ms = uint32_t(now - entry.stored_at_ms);
         return true;
@@ -337,7 +353,7 @@ class ModbusGateway : public Component {
     ResponseCacheEntry *oldest = nullptr;
     uint32_t oldest_age = 0;
     for (auto &entry : response_cache_) {
-      if (entry.valid && uint32_t(now - entry.stored_at_ms) >= cache_ttl_ms_) entry.valid = false;
+      if (entry.valid && uint32_t(now - entry.stored_at_ms) >= (cache_ttl_adaptive_ ? entry.ttl_ms : cache_ttl_ms_)) entry.valid = false;
       if (!entry.valid && target == nullptr) target = &entry;
       if (entry.valid && entry.direction == direction && entry.unit_id == unit_id &&
           entry.function_code == request_pdu[0] && entry.start_address == start_address &&
@@ -353,6 +369,11 @@ class ModbusGateway : public Component {
     if (target == nullptr) target = oldest;
     if (target == nullptr) return;
 
+    const bool same_key = target->direction == direction && target->unit_id == unit_id &&
+        target->function_code == request_pdu[0] && target->start_address == start_address &&
+        target->quantity == quantity;
+    const uint32_t previous_request_ms = same_key ? target->last_request_ms : 0;
+    const uint32_t previous_interval_ms = same_key ? target->observed_interval_ms : 0;
     target->valid = false;
     target->direction = direction;
     target->unit_id = unit_id;
@@ -362,6 +383,14 @@ class ModbusGateway : public Component {
     target->response_length = uint16_t(response_pdu.size());
     memcpy(target->response_pdu, response_pdu.data(), response_pdu.size());
     target->stored_at_ms = now;
+    target->last_request_ms = now;
+    target->observed_interval_ms = previous_interval_ms;
+    if (cache_ttl_adaptive_ && previous_request_ms != 0) {
+      const uint32_t interval = uint32_t(now - previous_request_ms);
+      if (interval >= 50U && interval <= 60000U) target->observed_interval_ms = interval;
+    }
+    target->ttl_ms = cache_ttl_adaptive_ && target->observed_interval_ms != 0
+        ? adaptive_ttl_(target->observed_interval_ms) : cache_ttl_ms_;
     target->valid = true;
     add_event_("CACHE STORE", String(direction == CACHE_DIRECTION_CLIENT ? "Client mode" : "Server mode") +
                " | Unit ID=" + String(unit_id) + "; Function=" + String(request_pdu[0]) +
@@ -559,6 +588,7 @@ class ModbusGateway : public Component {
     cache_client_enabled_ = prefs_.getBool("cachecli", cache_client_enabled_);
     cache_server_enabled_ = prefs_.getBool("cachesrv", cache_server_enabled_);
     cache_ttl_ms_ = prefs_.getUInt("cachettl", cache_ttl_ms_);
+    cache_ttl_adaptive_ = prefs_.getBool("cacheauto", false);
     if (cache_ttl_ms_ < 50 || cache_ttl_ms_ > 10000) cache_ttl_ms_ = 500;
     tx_gpio_ = prefs_.getInt("tx", tx_gpio_);
     rx_gpio_ = prefs_.getInt("rx", rx_gpio_);
@@ -1967,9 +1997,13 @@ main>.bottom-actions>button{height:44px!important;min-height:44px!important;max-
 <div id="cache_server_field"><label class="check-label"><input type="checkbox" name="cache_server" value="1" form="cfg")HTML";
     if (cache_server_enabled_) s += " checked";
     s += R"HTML(> Activer le cache en mode Serveur IP (IP → RTU)</label></div>
-<div id="cache_ttl_field"><label>Durée de validité du cache (ms)</label><input name="cache_ttl" form="cfg" type="number" min="50" max="10000" value=")HTML";
+<div id="cache_ttl_field"><label>Gestion du TTL</label><select name="cache_ttl_mode" form="cfg"><option value="fixed")HTML";
+    if (!cache_ttl_adaptive_) s += " selected";
+    s += R"HTML(>TTL fixe / Fixed TTL</option><option value="adaptive")HTML";
+    if (cache_ttl_adaptive_) s += " selected";
+    s += R"HTML(>TTL adaptatif / Adaptive TTL</option></select><div id="cache_fixed_ttl"><label>Durée de validité du cache (ms)</label><input name="cache_ttl" form="cfg" type="number" min="50" max="10000" value=")HTML";
     s += String(cache_ttl_ms_);
-    s += R"HTML("></div></div>
+    s += R"HTML("></div><p class="muted">Mode adaptatif : TTL calculé par requête à partir de la période observée (80 %, entre 50 et 10 000 ms). Valeur initiale : TTL fixe.</p></div></div>
 <div class="muted tcp-note">Le cache concerne uniquement les lectures Modbus (fonctions 01 à 04). L’option affichée correspond au mode Client/Serveur sélectionné ; le réglage de l’autre mode est conservé. Les écritures réussies invalident les réponses mémorisées pour l’Unit ID concerné. 64 entrées maximum.</div>
 </div></section>
 <section><h2><span class="section-badge section-badge-rtu" aria-hidden="true"><img src="/img/modbus-rtu.jpg" alt=""><small>RTU</small></span>2. Paramètres Modbus RTU</h2><div class="grid">
@@ -2113,10 +2147,11 @@ function crc16Modbus(bytes){let crc=0xFFFF;for(const b of bytes){crc^=b;for(let 
 function toggleHostField(){const isServer=document.querySelector('select[name="mode"]').value==='SERVER';const isTcp=document.querySelector('select[name="transport"]').value==='TCP';document.getElementById('host_field').style.display=isServer?'none':'block';document.getElementById('host_input').required=!isServer;const persistentField=document.getElementById('persistent_tcp_field');const persistentInput=document.querySelector('input[name="persistent"]');const showPersistent=!isServer&&isTcp;persistentField.style.display=showPersistent?'block':'none';persistentInput.disabled=!showPersistent;}
 document.querySelector('select[name="mode"]').addEventListener('change',toggleHostField);
 document.querySelector('select[name="transport"]').addEventListener('change',toggleHostField);toggleHostField();
-function toggleCacheFields(){const isClient=document.querySelector('select[name="mode"]').value==='CLIENT';document.getElementById('cache_client_field').style.display=isClient?'block':'none';document.getElementById('cache_server_field').style.display=isClient?'none':'block';const activeCache=document.querySelector('input[name="'+(isClient?'cache_client':'cache_server')+'"]');document.getElementById('cache_ttl_field').style.display=activeCache.checked?'block':'none';}
+function toggleCacheFields(){const isClient=document.querySelector('select[name="mode"]').value==='CLIENT';document.getElementById('cache_client_field').style.display=isClient?'block':'none';document.getElementById('cache_server_field').style.display=isClient?'none':'block';const activeCache=document.querySelector('input[name="'+(isClient?'cache_client':'cache_server')+'"]');document.getElementById('cache_ttl_field').style.display=activeCache.checked?'block':'none';document.getElementById('cache_fixed_ttl').style.display=document.querySelector('select[name="cache_ttl_mode"]').value==='fixed'?'block':'none';}
 document.querySelector('select[name="mode"]').addEventListener('change',toggleCacheFields);
 document.querySelector('input[name="cache_client"]').addEventListener('change',toggleCacheFields);
-document.querySelector('input[name="cache_server"]').addEventListener('change',toggleCacheFields);toggleCacheFields();
+document.querySelector('input[name="cache_server"]').addEventListener('change',toggleCacheFields);
+document.querySelector('select[name="cache_ttl_mode"]').addEventListener('change',toggleCacheFields);toggleCacheFields();
 function escapeHtml(value){return String(value).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
 function formatFrame(x){const kind=/RTU/i.test(x.dir)?'rtu':/(TCP|UDP|IP)/i.test(x.dir)?'ip':/TIMING/i.test(x.dir)?'timing':'other';const prefix='<span class="frame-'+kind+'">'+escapeHtml(x.time)+' | '+escapeHtml(translateValue(x.dir))+'</span> | ';const isRtu=x.dir.startsWith('RTU')||x.dir==='MANUAL RTU';const bytes=x.hex.trim().split(/\s+/).filter(Boolean);if(!isRtu||bytes.length<3)return prefix+escapeHtml(translateValue(x.hex));const vals=bytes.map(b=>parseInt(b,16));if(vals.some(v=>!Number.isFinite(v)))return prefix+x.hex;const calculated=crc16Modbus(vals.slice(0,-2));const crcOk=vals[vals.length-2]===(calculated&255)&&vals[vals.length-1]===((calculated>>8)&255);const payload=bytes.slice(0,-2).join(' ');const crc='<span class=\"crc-byte\">'+bytes[bytes.length-2]+'</span> <span class=\"crc-byte\">'+bytes[bytes.length-1]+'</span>';return prefix+payload+' '+crc+'  <span class=\"'+(crcOk?'crc-ok':'crc-bad')+'\">CRC '+(crcOk?'OK':tr('Erreur','Error'))+'</span>';}
 function updateDashboard(frames){
@@ -2377,6 +2412,7 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
     } else if (tcp_mode_ == "SERVER") {
       cache_server_enabled_ = web_.hasArg("cache_server") && web_.arg("cache_server") == "1";
     }
+    if (web_.hasArg("cache_ttl_mode")) cache_ttl_adaptive_ = web_.arg("cache_ttl_mode") == "adaptive";
     if (web_.hasArg("cache_ttl")) {
       int ttl = web_.arg("cache_ttl").toInt();
       if (ttl >= 50 && ttl <= 10000) cache_ttl_ms_ = uint32_t(ttl);
@@ -2384,6 +2420,7 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
     prefs_.putBool("cachecli", cache_client_enabled_);
     prefs_.putBool("cachesrv", cache_server_enabled_);
     prefs_.putUInt("cachettl", cache_ttl_ms_);
+    prefs_.putBool("cacheauto", cache_ttl_adaptive_);
     cache_clear_();
     if (gpio_changed) {
       send_reboot_response_(web_.arg("lang") == "en");
