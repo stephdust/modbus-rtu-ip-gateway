@@ -1,4 +1,4 @@
-## Unreleased — diagnostics improvements after v1.2.2 source bump
+## 1.2.3 — Live cache diagnostics (2026-11-18; source on `main`, release publication pending)
 
 - Added live active-cache occupancy (`0 / 64` when disabled) and effective TTL range to the Counters / Diagnostics Web panel, with a lightweight JSON status endpoint. Counts exclude expired entries and entries belonging to the inactive Client/Server direction. Firmware build and hardware validation pending.
 
