@@ -270,3 +270,7 @@ Current source version: **v1.2.7** on `main` (fixed/adaptive cache TTL). The las
 
 
 > **Web UI v1.2.7:** The Mode selector is transport-neutral: **Client (RTU → IP)** or **Server (IP → RTU)**. Choose **TCP** or **UDP** independently in Transport. The screenshots above show the current v1.2.7 labels.
+
+### ESPHome diagnostics interface (port 8080)
+
+The sample `my-modbus-gateway.yaml` uses ESPHome Web Server **v3** on port **8080**. Its `js_include: web-link-addon.js` loads a small JavaScript module alongside the default ESPHome interface, turning the **Interface web** text sensor's gateway URL into a clickable link to port 80. Keep `web-link-addon.js` in the same ESPHome configuration directory as the YAML when compiling. The addon needs the browser to load ESPHome's standard externally hosted UI assets. This does not change the Modbus gateway component or its firmware version.
