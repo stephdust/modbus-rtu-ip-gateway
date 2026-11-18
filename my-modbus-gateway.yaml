@@ -103,10 +103,13 @@ text_sensor:
       sorting_group_id: grp_gateway
       sorting_weight: 10
     lambda: |-
-      if (id(gateway_ip).has_state()) {
-        return std::string("http://") + id(gateway_ip).state + "/";
+      // Read the active Wi-Fi address directly: the wifi_info text sensor
+      // may not have published its state when this lambda runs.
+      const auto ip = WiFi.localIP().toString();
+      if (ip.length() == 0 || ip == "0.0.0.0") {
+        return std::string("Wi-Fi non connecte");
       }
-      return {};
+      return std::string("http://") + ip.c_str() + "/";
 
   # Système ESP32
   - platform: version
