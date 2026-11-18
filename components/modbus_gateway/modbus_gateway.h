@@ -5,6 +5,7 @@
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include "mbap_codec.h"
+#include "modbus_gateway_policy.h"
 // ESP-IDF and Arduino WebServer both define HTTP_ANY; this component does not use it.
 #ifdef HTTP_ANY
 #undef HTTP_ANY
@@ -146,7 +147,7 @@ class ModbusGateway : public Component {
   int rx_gpio_{18};
   int de_re_gpio_{21};
   uint32_t tcp_timeout_ms_{3000};
-  bool silent_on_timeout_{false};  // false = standard Modbus gateway exception
+  bool silent_on_timeout_{false};  // true = no Modbus reply for ANY error (client/server TCP/UDP)
   bool tcp_persistent_{true};
   bool cache_client_enabled_{false};
   bool cache_server_enabled_{false};
@@ -324,14 +325,19 @@ class ModbusGateway : public Component {
       if (entry.direction == direction && entry.unit_id == unit_id &&
           entry.function_code == request_pdu[0] && entry.start_address == start_address &&
           entry.quantity == quantity) {
+        // Check the ORIGINAL TTL first. Updating adaptive TTL before this
+        // test can revive an already expired entry and serve stale data.
+        if (gateway_policy::cache_expired(
+                now, entry.stored_at_ms,
+                cache_ttl_adaptive_ ? entry.ttl_ms : cache_ttl_ms_)) {
+          entry.valid = false;
+          continue; // tolerate any stale duplicate left in RAM
+        }
         const uint32_t elapsed = uint32_t(now - entry.last_request_ms);
-        if (cache_ttl_adaptive_ && entry.last_request_ms != 0 && elapsed >= 50U && elapsed <= 60000U) {
+        if (cache_ttl_adaptive_ && entry.last_request_ms != 0 &&
+            elapsed >= 50U && elapsed <= 60000U) {
           entry.observed_interval_ms = elapsed;
           entry.ttl_ms = adaptive_ttl_(elapsed);
-        }
-        if (uint32_t(now - entry.stored_at_ms) >= (cache_ttl_adaptive_ ? entry.ttl_ms : cache_ttl_ms_)) {
-          entry.valid = false;
-          return false;
         }
         entry.last_request_ms = now;
         response_pdu.assign(entry.response_pdu, entry.response_pdu + entry.response_length);
@@ -351,25 +357,32 @@ class ModbusGateway : public Component {
     if (!is_cacheable_read_request_(request_pdu, start_address, quantity)) return;
 
     const uint32_t now = millis();
-    ResponseCacheEntry *target = nullptr;
+    ResponseCacheEntry *matching = nullptr;
+    ResponseCacheEntry *vacant = nullptr;
     ResponseCacheEntry *oldest = nullptr;
     uint32_t oldest_age = 0;
     for (auto &entry : response_cache_) {
-      if (entry.valid && uint32_t(now - entry.stored_at_ms) >= (cache_ttl_adaptive_ ? entry.ttl_ms : cache_ttl_ms_)) entry.valid = false;
-      if (!entry.valid && target == nullptr) target = &entry;
+      if (entry.valid && gateway_policy::cache_expired(
+              now, entry.stored_at_ms,
+              cache_ttl_adaptive_ ? entry.ttl_ms : cache_ttl_ms_))
+        entry.valid = false;
       if (entry.valid && entry.direction == direction && entry.unit_id == unit_id &&
           entry.function_code == request_pdu[0] && entry.start_address == start_address &&
           entry.quantity == quantity) {
-        target = &entry;
-        break;
+        // ALWAYS update the matching key, even if a free slot precedes it.
+        // Otherwise duplicate keys cause old responses to win future lookups.
+        if (!matching) matching = &entry;
+        else entry.valid = false; // eliminate legacy duplicates
+        continue;
       }
+      if (!entry.valid && !vacant) vacant = &entry;
       if (entry.valid) {
         const uint32_t age = uint32_t(now - entry.stored_at_ms);
-        if (oldest == nullptr || age > oldest_age) { oldest = &entry; oldest_age = age; }
+        if (!oldest || age > oldest_age) { oldest = &entry; oldest_age = age; }
       }
     }
-    if (target == nullptr) target = oldest;
-    if (target == nullptr) return;
+    ResponseCacheEntry *target = matching ? matching : (vacant ? vacant : oldest);
+    if (!target) return;
 
     const bool same_key = target->direction == direction && target->unit_id == unit_id &&
         target->function_code == request_pdu[0] && target->start_address == start_address &&
