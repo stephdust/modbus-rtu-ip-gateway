@@ -62,6 +62,7 @@ class ModbusGateway : public Component {
     web_.on("/save", HTTP_POST, [this]() { this->save_config_(); });
     web_.on("/reboot", HTTP_POST, [this]() { this->reboot_gateway_(); });
     web_.on("/frames", HTTP_GET, [this]() { web_.send(200, "application/json", this->frames_json_()); });
+    web_.on("/cache-stats", HTTP_GET, [this]() { web_.sendHeader("Cache-Control", "no-store"); web_.send(200, "application/json", this->cache_stats_json_()); });
     web_.on("/connections", HTTP_GET, [this]() { web_.sendHeader("Cache-Control", "no-store"); web_.send(200, "application/json", this->connections_json_()); });
     web_.on("/frames.txt", HTTP_GET, [this]() {
       web_.sendHeader("Content-Disposition", "attachment; filename=\"modbus-frame-capture.txt\"");
@@ -494,6 +495,30 @@ class ModbusGateway : public Component {
                  "; Scope=all cached reads for this Unit ID (unknown or malformed write range)" +
                  "; Entries=" + String(invalidated) + ".");
     }
+  }
+
+  String cache_stats_json_() const {
+    const bool client_mode = tcp_mode_ == "CLIENT";
+    const bool enabled = client_mode ? cache_client_enabled_ : cache_server_enabled_;
+    const uint8_t direction = client_mode ? CACHE_DIRECTION_CLIENT : CACHE_DIRECTION_SERVER;
+    const uint32_t now = millis();
+    uint32_t count = 0, min_ttl = 0, max_ttl = 0;
+    if (enabled) {
+      for (const auto &entry : response_cache_) {
+        if (!entry.valid || entry.direction != direction) continue;
+        const uint32_t ttl = cache_ttl_adaptive_ ? entry.ttl_ms : cache_ttl_ms_;
+        if (uint32_t(now - entry.stored_at_ms) >= ttl) continue;
+        ++count;
+        if (min_ttl == 0 || ttl < min_ttl) min_ttl = ttl;
+        if (ttl > max_ttl) max_ttl = ttl;
+      }
+    }
+    return String("{\"enabled\":") + (enabled ? "true" : "false") +
+           ",\"entries\":" + String(count) +
+           ",\"capacity\":" + String(RESPONSE_CACHE_CAPACITY) +
+           ",\"adaptive\":" + (cache_ttl_adaptive_ ? "true" : "false") +
+           ",\"ttl_min_ms\":" + String(min_ttl) +
+           ",\"ttl_max_ms\":" + String(max_ttl) + "}";
   }
 
   void cache_clear_() {
@@ -1849,7 +1874,7 @@ main>section:nth-of-type(6){grid-column:1/-1;grid-row:7}
 main>section.dashboard-status .status-content{padding:0 18px;display:grid;gap:10px}
 main>section.dashboard-status .status-content>div{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid #31506c}
 main>section.dashboard-status .status-content strong{color:#6fe7b1;text-align:right}
-main>section.dashboard-counters .counter-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;padding:0 18px}
+main>section.dashboard-counters .counter-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:0 18px}
 main>section.dashboard-counters .counter-grid>div{padding:14px;background:#0b2038;border:1px solid #32638a;border-radius:9px;display:flex;align-items:center;justify-content:space-between;gap:8px}
 main>section.dashboard-counters output{font-size:22px;color:#68dfff;font-weight:700;font-variant-numeric:tabular-nums}
 main>section.dashboard-status p,main>section.dashboard-counters p{margin:14px 18px 0}
@@ -2039,7 +2064,7 @@ main>.bottom-actions>button{height:44px!important;min-height:44px!important;max-
 <p class="muted" data-fr="Durée de connexion en temps écoulé. Les connexions UDP ne sont pas persistantes." data-en="Connection duration is elapsed time. UDP has no persistent connections.">Durée de connexion en temps écoulé. Les connexions UDP ne sont pas persistantes.</p>
 <span id="dashTransport" hidden></span><span id="dashMode" hidden></span><span id="dashListen" hidden></span>
 </section>
-<section class="dashboard-counters" aria-label="Diagnostics des trames"><h2>▥ <span data-fr="Compteurs / Diagnostics" data-en="Counters / diagnostics">Compteurs / Diagnostics</span></h2><div class="counter-grid"><div><strong>RTU RX</strong><output id="dashRtuRx">0</output></div><div><strong>RTU TX</strong><output id="dashRtuTx">0</output></div><div><strong>IP RX</strong><output id="dashIpRx">0</output></div><div><strong>IP TX</strong><output id="dashIpTx">0</output></div></div><p class="muted" data-fr="Nombre d’entrées correspondantes parmi les 64 dernières lignes du journal ; ce ne sont pas des compteurs cumulés." data-en="Matching entries in the most recent 64 log lines; these are not lifetime counters.">Nombre d’entrées correspondantes parmi les 64 dernières lignes du journal ; ce ne sont pas des compteurs cumulés.</p></section>
+<section class="dashboard-counters" aria-label="Diagnostics des trames"><h2>▥ <span data-fr="Compteurs / Diagnostics" data-en="Counters / diagnostics">Compteurs / Diagnostics</span></h2><div class="counter-grid"><div><strong>RTU RX</strong><output id="dashRtuRx">0</output></div><div><strong>RTU TX</strong><output id="dashRtuTx">0</output></div><div><strong>IP RX</strong><output id="dashIpRx">0</output></div><div><strong>IP TX</strong><output id="dashIpTx">0</output></div><div><strong data-fr="Cache (entrées)" data-en="Cache (entries)">Cache (entrées)</strong><output id="dashCacheEntries">0</output></div><div><strong data-fr="TTL effectif" data-en="Effective TTL">TTL effectif</strong><output id="dashCacheTtl">—</output></div></div><p class="muted" data-fr="Nombre d’entrées correspondantes parmi les 64 dernières lignes du journal ; ce ne sont pas des compteurs cumulés." data-en="Matching entries in the most recent 64 log lines; these are not lifetime counters.">Nombre d’entrées correspondantes parmi les 64 dernières lignes du journal ; ce ne sont pas des compteurs cumulés.</p><p class="muted" data-fr="Cache : nombre d’entrées valides du mode actif (0 si désactivé). TTL : plage effective des entrées en cache ; elle varie en mode adaptatif." data-en="Cache: valid entries for the active mode (0 when disabled). TTL: effective range for cached entries; varies in adaptive mode.">Cache : nombre d’entrées valides du mode actif (0 si désactivé). TTL : plage effective des entrées en cache ; elle varie en mode adaptatif.</p></section>
 <form id="cfg" method="POST" action="/save"><input type="hidden" id="form_lang" name="lang" value="fr"></form>
 <form id="rebootForm" method="POST" action="/reboot"><input type="hidden" id="reboot_lang" name="lang" value="fr"></form>
 <section><h2><span class="section-badge section-badge-log" aria-hidden="true"><img src="/img/frame-diagnostics.jpg" alt=""><small>LOG</small></span>4. Debug des trames</h2>
@@ -2196,7 +2221,15 @@ async function refreshConnections(){
   else{const row=document.createElement('tr');const cell=document.createElement('td');cell.colSpan=3;cell.textContent=tr('UDP : aucune session client persistante','UDP: no persistent client sessions');row.appendChild(cell);tbody.appendChild(row);}
  }catch(e){document.getElementById('dashWifi').textContent=tr('Indisponible','Unavailable');document.getElementById('dashClientCount').textContent='—';}
 }
-async function refresh(){try{let r=await fetch('/frames');if(!r.ok)throw Error('frames unavailable');let j=await r.json();const frames=Array.isArray(j.frames)?j.frames:[];document.getElementById('frames').innerHTML=frames.map(formatFrame).join('\n')||tr('Aucune trame','No frames');updateDashboard(frames);}catch(e){document.getElementById('dashWebStatus').textContent=tr('Indisponible','Unavailable');}}
+async function refreshCacheStats(){
+ try{
+  const r=await fetch('/cache-stats',{cache:'no-store'});if(!r.ok)throw Error('cache-stats');
+  const j=await r.json();
+  document.getElementById('dashCacheEntries').textContent=String(j.enabled?j.entries:0)+' / '+j.capacity;
+  document.getElementById('dashCacheTtl').textContent=!j.enabled?'—':!j.entries?'—':j.ttl_min_ms===j.ttl_max_ms?j.ttl_min_ms+' ms':j.ttl_min_ms+'–'+j.ttl_max_ms+' ms';
+ }catch(e){document.getElementById('dashCacheEntries').textContent='—';document.getElementById('dashCacheTtl').textContent='—';}
+}
+async function refresh(){try{let r=await fetch('/frames');if(!r.ok)throw Error('frames unavailable');let j=await r.json();const frames=Array.isArray(j.frames)?j.frames:[];document.getElementById('frames').innerHTML=frames.map(formatFrame).join('\n')||tr('Aucune trame','No frames');updateDashboard(frames);await refreshCacheStats();}catch(e){document.getElementById('dashWebStatus').textContent=tr('Indisponible','Unavailable');}}
 async function clearFrames(){try{await fetch('/clear',{method:'POST'});document.getElementById('frames').textContent=tr('Aucune trame','No frames');}catch(e){}}
 async function updateListenState(){try{let r=await fetch('/listen');let j=await r.json();document.getElementById('listenBtn').textContent=j.listening?tr('Arrêter l’écoute RTU','Stop RTU listening'):tr('Reprendre l’écoute RTU','Resume RTU listening');document.getElementById('listenState').textContent=j.listening?tr('Écoute RTU active','RTU listening'):tr('Écoute RTU suspendue','RTU listening paused');document.getElementById('dashListen').textContent=j.listening?tr('Active','Active'):tr('Suspendue','Paused');}catch(e){}}
 async function toggleListen(){try{await fetch('/listen',{method:'POST'});await updateListenState();}catch(e){document.getElementById('listenState').textContent=tr('Erreur de commande','Command error');}}
