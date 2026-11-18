@@ -229,3 +229,6 @@ The network host, port and timeout settings apply to the selected transport. UDP
 The **Client** and **Server** cache checkboxes follow the selected mode, regardless of transport. The **TTL mode** selector appears only if the selected mode's cache is enabled. **Fixed TTL** shows the numeric TTL (ms) input; **Adaptive TTL** hides that numeric input while preserving its value as a fallback. Disabling the cache hides both controls without erasing saved settings. See [Cache behavior](CACHE.md) and [UDP development details](TCP_UDP_DEVELOPMENT.md).
 
 The earlier TCP-specific examples and screenshots in this guide remain valid for TCP, but should not be interpreted as excluding UDP.
+
+
+> **Web UI v1.2.7:** The Mode selector is transport-neutral: **Client (RTU → IP)** or **Server (IP → RTU)**. Choose **TCP** or **UDP** independently in Transport. Earlier v1.2.6 screenshots remain historical references and may display older labels.
