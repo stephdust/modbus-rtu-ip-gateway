@@ -70,25 +70,25 @@ See [Cache behavior and configuration](docs/CACHE.md) for details. The cache opt
 
 ## Web interface (v1.2.6)
 
-### Aperçus de l'interface Web v1.2.6 — simulations
+### Aperçus de l'interface Web v1.2.6 — simulations (non captures réelles)
 
 > **Illustrations simulées, et non captures réelles de l'ESP32.** Elles reprennent l'organisation actuelle (logo, barre d'actions, paramètres et tableau de connexions), avec des adresses et états d'exemple. Les vrais journaux de trames, compteurs et connexions dépendent du matériel.
 
 **TCP Client (RTU → IP)**
 
-![Simulation de l'interface tcp-client v1.2.1](docs/assets/ui-v1.2.2-tcp-client-simulation.svg)
+![Simulation de l'interface tcp-client v1.2.1](docs/assets/ui-v1.2.6-tcp-client-simulation.svg)
 
 **TCP Serveur (IP → RTU)**
 
-![Simulation de l'interface tcp-server v1.2.1](docs/assets/ui-v1.2.2-tcp-server-simulation.svg)
+![Simulation de l'interface tcp-server v1.2.1](docs/assets/ui-v1.2.6-tcp-server-simulation.svg)
 
 **UDP Client (RTU → IP)**
 
-![Simulation de l'interface udp-client v1.2.1](docs/assets/ui-v1.2.2-udp-client-simulation.svg)
+![Simulation de l'interface udp-client v1.2.1](docs/assets/ui-v1.2.6-udp-client-simulation.svg)
 
 **UDP Serveur (IP → RTU)**
 
-![Simulation de l'interface udp-server v1.2.1](docs/assets/ui-v1.2.2-udp-server-simulation.svg)
+![Simulation de l'interface udp-server v1.2.1](docs/assets/ui-v1.2.6-udp-server-simulation.svg)
 
 Le panneau de diagnostics des trames, situé sous les paramètres, distingue **RTU RAW** (cyan), **TCP/UDP RAW** (orange) et les mesures **TIMING** (violet). La barre d'actions sous le logo regroupe le thème, la langue, **Enregistrer / appliquer**, **Redémarrer** et **Actualiser**.
 
