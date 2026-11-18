@@ -77,6 +77,13 @@ text_sensor:
       name: "Adresse IP"
       id: gateway_ip
       icon: mdi:ip-network
+      on_value:
+        then:
+          - text_sensor.template.publish:
+              id: gateway_web_url
+              state: !lambda |-
+                if (x.empty() || x == "0.0.0.0") return std::string("Adresse IP indisponible");
+                return std::string("http://") + x + "/";
       web_server:
         sorting_group_id: grp_network
         sorting_weight: 10
@@ -98,18 +105,10 @@ text_sensor:
     name: "Interface web"
     id: gateway_web_url
     icon: mdi:web
-    update_interval: 30s
+    update_interval: never
     web_server:
       sorting_group_id: grp_gateway
       sorting_weight: 10
-    lambda: |-
-      // Read the active Wi-Fi address directly: the wifi_info text sensor
-      // may not have published its state when this lambda runs.
-      const auto ip = WiFi.localIP().toString();
-      if (ip.length() == 0 || ip == "0.0.0.0") {
-        return std::string("Wi-Fi non connecte");
-      }
-      return std::string("http://") + ip.c_str() + "/";
 
   # Système ESP32
   - platform: version
