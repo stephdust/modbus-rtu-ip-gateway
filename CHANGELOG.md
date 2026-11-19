@@ -1,3 +1,10 @@
+## 1.3.3 — Frame monitoring language fix (2026-11-19; source on `main`)
+
+- Fix the RTU/IP frame monitoring panel showing French event and timing messages when English is selected.
+- Preserve firmware-origin English log text in EN mode; retain the existing French translations in FR mode.
+- Refresh frame monitoring immediately after switching languages.
+- No changes to Modbus transactions, timing, caching, or serial/network behavior. Compilation and device verification pending.
+
 # Changelog
 
 > **Documentation uniquement (19 novembre 2026, branche `main`) :** ajout du [guide ESPHome Device Builder sous Home Assistant](docs/INSTALL_HOME_ASSISTANT.md) — copier le seul YAML, configurer les secrets, récupérer automatiquement le composant depuis GitHub, compiler/flasher USB ou OTA. **Pas de changement du firmware ni du numéro de version v1.3.2.**
