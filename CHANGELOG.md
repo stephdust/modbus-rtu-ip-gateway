@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.4 — Bidirectional frame language display (2026-11-19; source on `main`)
+
+- Fix French frame monitoring after switching back from English: translate firmware-origin English diagnostics explicitly into French.
+- Preserve English log text when EN is selected and refresh the panel immediately on language changes.
+- Keep Modbus protocol, cache, and timing behavior unchanged. Device validation pending.
+
 ## 1.3.3 — Frame monitoring language fix (2026-11-19; source on `main`)
 
 - Fix the RTU/IP frame monitoring panel showing French event and timing messages when English is selected.
