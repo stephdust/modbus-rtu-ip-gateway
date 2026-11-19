@@ -2433,7 +2433,30 @@ function escapeHtml(value){return String(value).replace(/[&<>]/g,function(c){ret
 // Frame/event records originate in English from the firmware. The general
 // translation table is bidirectional for UI labels and includes English keys
 // mapped to French values; using it in English mode reverses log messages.
-function translateFrameValue(value){return currentLanguage==='en'?value:translateValue(value);}
+// Only firmware log translations are applied here, in the English -> French
+// direction. The general UI dictionary mixes both directions, so reversing it
+// cannot reliably translate frame records.
+const frameTranslationEntries=Object.entries(translations);
+const frameLogStart=frameTranslationEntries.findIndex(([key])=>key==='Connecting to ');
+const frameLogEnd=frameTranslationEntries.findIndex(([key])=>key==='Pending RTU input buffer overflow; buffered bytes discarded.');
+const frameLogTranslations=[
+  ...frameTranslationEntries.slice(frameLogStart,frameLogEnd+1),
+  ...frameTranslationEntries.filter(([key])=>[
+    'CACHE STALE','CACHE REFRESH','CACHE REFRESH OK','CACHE REFRESH ERROR',
+    'RTU DEADLINE','Client mode | RTU request discarded; Unit ID=',
+    'Server mode | RTU response discarded; RTU Unit ID=',
+    'Server mode | No complete RTU response; Unit ID=',
+    '; Function=','; bytes=','; received=0x','; calculated=0x',
+    '; total CRC errors=','. TCP gateway exception 0x0B returned.'
+  ].includes(key))
+].sort((a,b)=>b[0].length-a[0].length);
+function translateFrameValue(value){
+  if(currentLanguage==='en')return value;
+  let out=value;
+  for(const [english,french] of frameLogTranslations)
+    if(english)out=out.split(english).join(french);
+  return out;
+}
 function formatFrame(x){const kind=/RTU/i.test(x.dir)?'rtu':/(TCP|UDP|IP)/i.test(x.dir)?'ip':/TIMING/i.test(x.dir)?'timing':'other';const prefix='<span class="frame-'+kind+'">'+escapeHtml(x.time)+' | '+escapeHtml(translateFrameValue(x.dir))+'</span> | ';const isRtu=x.dir.startsWith('RTU')||x.dir==='MANUAL RTU';const bytes=x.hex.trim().split(/\s+/).filter(Boolean);if(!isRtu||bytes.length<3)return prefix+escapeHtml(translateFrameValue(x.hex));const vals=bytes.map(b=>parseInt(b,16));if(vals.some(v=>!Number.isFinite(v)))return prefix+x.hex;const calculated=crc16Modbus(vals.slice(0,-2));const crcOk=vals[vals.length-2]===(calculated&255)&&vals[vals.length-1]===((calculated>>8)&255);const payload=bytes.slice(0,-2).join(' ');const crc='<span class=\"crc-byte\">'+bytes[bytes.length-2]+'</span> <span class=\"crc-byte\">'+bytes[bytes.length-1]+'</span>';return prefix+payload+' '+crc+'  <span class=\"'+(crcOk?'crc-ok':'crc-bad')+'\">CRC '+(crcOk?'OK':tr('Erreur','Error'))+'</span>';}
 function updateDashboard(frames){
  const mode=document.querySelector('select[name="mode"]').value;
