@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.6 — TCP status indicator sizing (2026-11-19; source on `main`)
+
+- Match the TCP destination status dot to the visual size of the other connection indicators using a 12px CSS circle.
+- Keep dynamic red/green connection state coloring; no protocol behavior changes.
+- Device validation pending.
+
 ## 1.3.5 — TCP destination connection status colors (2026-11-19; source on `main`)
 
 - Show TCP Client destination status in red when disconnected and green when connected, including the status indicator and destination text.
