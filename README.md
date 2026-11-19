@@ -12,6 +12,12 @@ A Wi-Fi Modbus gateway built with **ESPHome**, **ESP32-S3** and the **Arduino fr
 
 > **Version 1.3.2 source on `main`:** supports **TCP Client, TCP Server, UDP Client and UDP Server**. The maintainer reports successful functional tests of the four modes; robustness testing remains pending. See [TCP/UDP development and UI behavior](docs/TCP_UDP_DEVELOPMENT.md).
 
+## Installation simplifiée dans Home Assistant (ESPHome)
+
+**Sans cloner GitHub et sans copier le composant C++ localement :** installer **ESPHome Device Builder** dans Home Assistant, créer un appareil, coller le contenu de [`my-modbus-gateway.yaml`](my-modbus-gateway.yaml), modifier le bloc `external_components` pour pointer vers `@v1.3.2`, compléter les secrets `wifi_ssid`, `wifi_password` et `api_key`, puis lancer **Install**. ESPHome télécharge automatiquement `modbus_gateway` depuis GitHub pendant la compilation.
+
+**[Guide pas à pas : Home Assistant, YAML, secrets, compilation, USB et OTA](docs/INSTALL_HOME_ASSISTANT.md)**
+
 ### TCP/UDP web UI (v1.3.2)
 
 The source interface labels the network section **Modbus IP**, offers a TCP/UDP selector, and includes four harmonized blue/cyan section thumbnails matching the RTU ↔ IP header artwork. The IP thumbnail explicitly shows **TCP / UDP**. The **Persistent TCP connection** control is displayed only for **TCP Client**; it is hidden for TCP Server and both UDP modes, and the stored TCP setting is preserved while UDP is selected.
