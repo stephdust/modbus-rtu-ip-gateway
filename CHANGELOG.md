@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.5 — TCP destination connection status colors (2026-11-19; source on `main`)
+
+- Show TCP Client destination status in red when disconnected and green when connected, including the status indicator and destination text.
+- Keep TCP Server and UDP modes' existing display behavior; this is a Web UI-only change.
+- Compilation and device verification pending.
+
 ## 1.3.4 — Bidirectional frame language display (2026-11-19; source on `main`)
 
 - Fix French frame monitoring after switching back from English: translate firmware-origin English diagnostics explicitly into French.
