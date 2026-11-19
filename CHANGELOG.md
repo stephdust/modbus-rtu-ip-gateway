@@ -1,5 +1,7 @@
 # Changelog
 
+> **Documentation uniquement (19 novembre 2026, branche `main`) :** ajout du [guide ESPHome Device Builder sous Home Assistant](docs/INSTALL_HOME_ASSISTANT.md) — copier le seul YAML, configurer les secrets, récupérer automatiquement le composant depuis GitHub, compiler/flasher USB ou OTA. **Pas de changement du firmware ni du numéro de version v1.3.2.**
+
 ## 1.3.2 — Optional bounded background refresh and documentation cleanup (2026-11-18; [GitHub release published](https://github.com/stephdust/my-modbus-rtu-ip-gateway/releases/tag/v1.3.2))
 
 - Added opt-in TCP Client stale-while-revalidate cache: validated read results can be served up to a configured maximum age while TCP refreshes run in the background without unsolicited RTU replies.
