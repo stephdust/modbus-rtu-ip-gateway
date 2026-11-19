@@ -2286,9 +2286,9 @@ main>.bottom-actions>button{height:44px!important;min-height:44px!important;max-
 </section>
 <section class="dashboard-status" aria-label="État et connexions"><h2>♧ <span data-fr="État et connexions" data-en="Status and connections">État et connexions</span></h2>
 <div class="status-content">
-<div><span>🟢 <b data-fr="Passerelle :" data-en="Gateway:">Passerelle :</b></span><strong id="dashWebStatus">—</strong></div>
-<div><span>🟢 <b>Wi-Fi :</b></span><strong id="dashWifi">—</strong></div>
-<div><span><span id="dashServerDot" aria-hidden="true" style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#22c55e;vertical-align:middle;margin-right:3px"></span> <b id="dashServerLabel" data-fr="Serveur IP :" data-en="IP server:">Serveur IP :</b></span><strong id="dashServer">—</strong></div>
+<div><span><span aria-hidden="true" style="display:inline-block;width:14px;height:14px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#a7f3d0,#34d399 55%,#16a34a);vertical-align:-2px;margin-right:5px"></span> <b data-fr="Passerelle :" data-en="Gateway:">Passerelle :</b></span><strong id="dashWebStatus">—</strong></div>
+<div><span><span aria-hidden="true" style="display:inline-block;width:14px;height:14px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#a7f3d0,#34d399 55%,#16a34a);vertical-align:-2px;margin-right:5px"></span> <b>Wi-Fi :</b></span><strong id="dashWifi">—</strong></div>
+<div><span><span id="dashServerDot" aria-hidden="true" style="display:inline-block;width:14px;height:14px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#a7f3d0,#34d399 55%,#16a34a);vertical-align:-2px;margin-right:5px"></span> <b id="dashServerLabel" data-fr="Serveur IP :" data-en="IP server:">Serveur IP :</b></span><strong id="dashServer">—</strong></div>
 <div><span>♟ <b id="dashClientLabel" data-fr="Clients IP :" data-en="IP clients:">Clients IP :</b></span><strong id="dashClientCount">—</strong></div>
 </div>
 <div class="connection-list"><table class="client-table"><thead><tr><th data-fr="Client" data-en="Client">Client</th><th data-fr="Adresse IP" data-en="IP address">Adresse IP</th><th data-fr="Connecté depuis" data-en="Connected for">Connecté depuis</th></tr></thead><tbody id="dashConnections"></tbody></table></div>
@@ -2489,7 +2489,7 @@ async function refreshConnections(){
   // TCP client connectivity is live; do not show a green indicator when disconnected.
   const tcpClient=!server&&tcp;
   const destinationColor=tcpClient?(j.connected?'#22c55e':'#ef4444'):'#22c55e';
-  document.getElementById('dashServerDot').style.backgroundColor=destinationColor;
+  document.getElementById('dashServerDot').style.background= j.connected || !tcpClient ? 'radial-gradient(circle at 35% 30%,#a7f3d0,#34d399 55%,#16a34a)' : 'radial-gradient(circle at 35% 30%,#fecaca,#ef4444 55%,#b91c1c)';
   document.getElementById('dashServer').style.color=destinationColor;
   document.getElementById('dashClientLabel').textContent=server&&tcp?tr('Clients TCP :','TCP clients:'):tr('Connexions IP :','IP connections:');
   document.getElementById('dashClientCount').textContent=server&&tcp?clients.length+' / 4 '+tr('connectés','connected'):(server?tr('UDP sans session','UDP connectionless'):(tcp?(j.connected?'1 / 1':'0 / 1'):tr('UDP sans session','UDP connectionless')));
