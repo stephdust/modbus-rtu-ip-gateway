@@ -3,6 +3,8 @@
 
 # Quick start and configuration
 
+> **Home Assistant / ESPHome Device Builder :** une installation plus simple est disponible dans le [guide Home Assistant](INSTALL_HOME_ASSISTANT.md). Il suffit de créer un appareil ESPHome, coller le YAML du dépôt, compléter le `secrets.yaml` du Device Builder et compiler. Le composant `modbus_gateway` se télécharge automatiquement depuis GitHub ; aucun dossier `components/` à copier.
+
 ## 1. Requirements
 
 - ESPHome with ESP32 support installed on a computer, or ESPHome Dashboard.
