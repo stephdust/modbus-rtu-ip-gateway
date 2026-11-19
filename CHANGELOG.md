@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.7 — Uniform connection status dots (2026-11-19; source on `main`)
+
+- Replace the mixed emoji and CSS status dots with three identically sized 14px CSS circles for gateway, Wi-Fi and TCP destination.
+- Keep dynamic green/red TCP connection coloring; UI-only change.
+
 ## 1.3.6 — TCP status indicator sizing (2026-11-19; source on `main`)
 
 - Match the TCP destination status dot to the visual size of the other connection indicators using a 12px CSS circle.
