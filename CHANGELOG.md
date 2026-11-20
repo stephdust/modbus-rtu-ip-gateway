@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.8 — Autonomous persistent TCP reconnect (2026-11-20; development branch, not released)
+
+- Fix **TCP Client** mode where an idle persistent socket was not supervised when no RTU requests arrived. The Web frame/connection diagnostics pages are not required to keep the TCP connection alive.
+- Add a once-per-second idle socket health check, TCP keepalive (15 s idle, 5 s between probes, 3 probes where supported), and automatic reconnect attempts with progressive delays of 2–30 seconds.
+- Keep the reconnect supervisor active even when the Web UI's **Stop RTU listening** control is selected; do not send synthetic Modbus requests.
+- Never reconnect in UDP/Server/nonpersistent mode, during an in-flight Modbus exchange, or with a partial RTU frame buffered. Retry a single read FC03/FC04 on a failed reused socket as before; never automatically replay writes.
+- Bound each background connect call to a requested 250 ms timeout (DNS resolution may take longer). Close stale sockets when Wi-Fi drops; reset a socket when the configured host, port, protocol, or persistent mode changes; reject configuration changes during an active transaction (HTTP 409).
+- Expose independent reconnect diagnostics under `GET /connections` (`persistent_supervisor`, `keepalive_configured`, `reconnect_attempts`, `reconnect_successes`, `reconnect_failures`, `idle_disconnects`, `keepalive_setup_failures`, `next_retry_ms`).
+- Add C++11 host tests for supervisor eligibility, exponential backoff, and millis() wraparound. **ESPHome compilation and overnight ESP32-S3 soak tests have not yet been performed**; no firmware release is claimed.
+
+
 ## 1.3.7 — Uniform connection status dots (2026-11-19; source on `main`)
 
 - Replace the mixed emoji and CSS status dots with three identically sized 14px CSS circles for gateway, Wi-Fi and TCP destination.

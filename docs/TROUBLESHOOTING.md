@@ -82,7 +82,11 @@ The `TCP CONNECT` entry also reports the Arduino Wi-Fi status value and the loca
 
 ## Persistent TCP Client sessions
 
-In TCP Client mode, the Web UI enables a persistent TCP connection by default. This avoids the TCP handshake on every RTU request. The diagnostics log shows `TCP CONNECT` when a socket is opened, `TCP REUSE` when an existing session is reused, and `TCP KEEP` after a successful response. If the server closes the session, the gateway opens a new connection for the next RTU request. Disable the persistent option in Section 1 if the remote server requires one connection per request.
+In TCP Client mode, the Web UI enables a persistent TCP connection by default. With firmware 1.3.8, an independent idle supervisor opens/reopens the TCP connection even with the **frame diagnostics page closed**, **no Modbus activity**, and even when **RTU listening is suspended**. The diagnostics log shows `TCP CONNECT`, `TCP REUSE`, `TCP KEEP`, plus new `TCP DOWN`, `TCP RESTORED`, `TCP WARN` and periodic `TCP RETRY` events. The reconnect cadence grows from 2 to 30 seconds if the destination is unreachable; configured keepalive probes can expose silent TCP disconnections.
+
+Visit `http://IP_DE_LA_PASSERELLE/connections` to inspect `connected`, `persistent_supervisor`, `keepalive_configured`, `reconnect_attempts`, `reconnect_successes`, `reconnect_failures`, `idle_disconnects`, `keepalive_setup_failures` and `next_retry_ms`. These counters are updated by the firmware's own loop, not by monitoring the Web page. A requested stop of RTU listening affects UART reception only.
+
+If you switch Persistent TCP **off**, the gateway deliberately closes its socket after each response and does not attempt idle reconnect. Keepalive does not detect a remote Modbus application that remains TCP-connected but stops answering protocol requests. See [overnight regression checks](TCP_IDLE_RECONNECT.md).
 
 The `TCP CONNECT` diagnostics display the station IP reported by ESPHome's Wi-Fi component. If it displays `unavailable`, check the ESPHome Wi-Fi logs and DHCP lease.
 

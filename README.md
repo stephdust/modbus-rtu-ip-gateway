@@ -88,7 +88,7 @@ and dropped late RTU responses. Full details in [Cache behavior](docs/CACHE.md).
 - **Selectable error policy:** one bilingual Web UI setting applies to Client and Server (TCP/UDP). `Standard` (default) returns a Modbus exception for communication/protocol errors; `Silent` sends no Modbus response for any error, including a received slave exception. RTU frames with incorrect CRC are never forwarded or cached; in Standard mode only a newly generated gateway exception may be sent. The setting survives restart.
 - **Mode-aware cache controls:** Section 1 shows only the cache switch for the selected TCP mode. The inactive mode's enable setting is preserved when saving or switching modes.
 - Images are served on separate HTTP routes instead of being embedded in the HTML response, keeping the page response small.
-- **Persistent TCP Client connection** is enabled by default to avoid a new TCP handshake for every RTU request; disable it in Section 1 when a remote server requires one connection per request. The gateway reconnects when it detects a dropped session.
+- **Persistent TCP Client connection** is enabled by default to avoid a new TCP handshake for every RTU request; disable it in Section 1 when a remote server requires one connection per request. In version 1.3.8 it also checks idle persistent sockets and reconnects independently of browser statistics and Modbus request traffic.
 - **Web UI reboot button** displays a five-second countdown and returns to the main page as soon as the gateway is online again.
 - TCP diagnostics report the actual IP address from ESPHome's Wi-Fi component, rather than relying only on the Arduino `WiFi.localIP()` accessor.
 
@@ -97,9 +97,15 @@ and dropped late RTU responses. Full details in [Cache behavior](docs/CACHE.md).
 ![Both gateway topologies: TCP Client / RTU Slave and TCP Server / RTU Master](docs/assets/system-architecture.png)
 
 
-### Persistent TCP reconnect (source v1.2.8)
+### Persistent TCP reconnection (source v1.3.8 — development)
 
-In **TCP Client** mode with **Persistent TCP connection** enabled, if a reused socket fails while sending a request, disconnects before a complete response, or times out waiting for a response, the gateway closes that socket and retries **one time** with a new TCP connection for Modbus function **03** or **04** only. The log shows `TCP RETRY`. Writes are **never automatically replayed**, to avoid duplicate side effects. Reconnection is request-driven, not a background keepalive. This behavior is present on `main`. See the v1.3.2 validation notes above for the newer background-refresh option.
+In **TCP Client** mode with **Persistent TCP connection** enabled, Flow.io's gateway supervises the socket **even with no incoming RTU requests and no Web frame/statistics page open**. Every second (while idle) it checks the socket; when disconnected it opens a new connection with a progressive retry delay of **2 to 30 seconds**. TCP keepalive (15 seconds idle, 5-second interval, three probes when supported) helps detect a silent remote loss. A TCP handshake is still synchronous, with a requested **250 ms timeout** for background attempts; DNS resolution may take longer. The supervisor does **not** send Modbus heartbeat frames and never interrupts an active transaction.
+
+The **Stop RTU listening** Web control stops reading/forwarding RTU requests, not TCP maintenance. Disabling **Persistent TCP connection** intentionally disables this maintenance as well. TCP Server and UDP modes are unchanged.
+
+A request that fails on an already-reused socket may still be retried **once for FC03/FC04 only**. **Writes are never automatically replayed**. The endpoint `/connections` provides connection and recovery counters. TCP keepalive detects loss of TCP reachability, **not** a Modbus server application that is stuck while its TCP stack still acknowledges packets. See [client reconnect and validation](docs/TCP_IDLE_RECONNECT.md) for an overnight test plan.
+
+**Verification:** the host policy test passes. The modified ESP32-S3 firmware has **not** yet been compiled or validated on hardware.
 
 ## Historical web interface screenshots (v1.2.7)
 
@@ -296,7 +302,7 @@ GPLv3 license text.
 
 ## Source version and validation
 
-The component source on `main` is **v1.3.2** (see `components/modbus_gateway/manifest.json`) and the official [GitHub source release v1.3.2](https://github.com/stephdust/my-modbus-rtu-ip-gateway/releases/tag/v1.3.2) is published. This version adds the optional bounded stale-while-revalidate client cache and RTU reply-deadline protection to earlier TCP/UDP, CRC and error-policy features. A GitHub source release is not a precompiled firmware image or proof of the version installed on any individual device. The maintainer has confirmed successful real-display operation of the v1.3.2 background cache on their ESP32-S3 installation. The repository does not include independent endurance, safety, or full TCP/UDP mode regression test results. Earlier versions and their dated screenshots remain in the documentation as historical references. See [CHANGELOG.md](CHANGELOG.md), [v1.3.2 release notes](docs/RELEASE_NOTES_v1.3.2.md), [Client TCP handling](docs/CLIENT_TCP_ASYNC.md) and [Cache behavior](docs/CACHE.md).
+The component source on this **development branch** reports **v1.3.8** in `components/modbus_gateway/manifest.json`. It is a source change only, not a compiled firmware or published release. The official [GitHub source release v1.3.2](https://github.com/stephdust/my-modbus-rtu-ip-gateway/releases/tag/v1.3.2) is published. This version adds the optional bounded stale-while-revalidate client cache and RTU reply-deadline protection to earlier TCP/UDP, CRC and error-policy features. A GitHub source release is not a precompiled firmware image or proof of the version installed on any individual device. The maintainer has confirmed successful real-display operation of the v1.3.2 background cache on their ESP32-S3 installation. The repository does not include independent endurance, safety, or full TCP/UDP mode regression test results. Earlier versions and their dated screenshots remain in the documentation as historical references. See [CHANGELOG.md](CHANGELOG.md), [v1.3.2 release notes](docs/RELEASE_NOTES_v1.3.2.md), [Client TCP handling](docs/CLIENT_TCP_ASYNC.md) and [Cache behavior](docs/CACHE.md).
 
 
 > **Historical v1.2.7 screenshots:** These show the transport-neutral Client/Server interface as captured at the time. For the currently implemented options, see [Quick start](docs/QUICK_START.md) and [Cache behavior](docs/CACHE.md).

@@ -6,6 +6,9 @@
 #include <WiFiUdp.h>
 #include "mbap_codec.h"
 #include "modbus_gateway_policy.h"
+#include "tcp_connection_policy.h"
+#include <lwip/sockets.h>
+#include <lwip/tcp.h>
 // ESP-IDF and Arduino WebServer both define HTTP_ANY; this component does not use it.
 #ifdef HTTP_ANY
 #undef HTTP_ANY
@@ -116,6 +119,9 @@ class ModbusGateway : public Component {
         rx_.clear();
         rx_timestamps_us_.clear();
       }
+      // This connection supervisor is independent of the Web frame monitor
+      // and of the RTU listening toggle. It never sends a Modbus request.
+      if (transport_ == "TCP") maintain_persistent_tcp_client_();
     } else {
       // Keep the UART buffer drained if the component is in an unknown mode.
       while (Serial1.available()) Serial1.read();
@@ -169,6 +175,18 @@ class ModbusGateway : public Component {
   uint8_t configured_rtu_id_{1};
   ::Preferences prefs_;
   WiFiClient client_;
+  // Persistent client health is maintained in loop() even when no RTU
+  // requests arrive and no browser is polling /frames or /connections.
+  uint32_t tcp_last_health_check_ms_{0};
+  uint32_t tcp_next_reconnect_ms_{0};
+  uint32_t tcp_retry_delay_ms_{tcp_connection_policy::kInitialRetryMs};
+  uint32_t tcp_reconnect_attempts_{0};
+  uint32_t tcp_reconnect_successes_{0};
+  uint32_t tcp_reconnect_failures_{0};
+  uint32_t tcp_idle_disconnects_{0};
+  uint32_t tcp_keepalive_setup_failures_{0};
+  bool tcp_link_was_up_{false};
+  bool tcp_keepalive_configured_{false};
   // The ESP32 Arduino NetworkServer supports a configurable client limit.
   static constexpr size_t MAX_TCP_CLIENTS = 4;
   WiFiServer tcp_server_{502, MAX_TCP_CLIENTS};
@@ -295,6 +313,99 @@ class ModbusGateway : public Component {
     logs_[log_head_] = {String(category), message, millis()};
     log_head_ = (log_head_ + 1) % FRAME_LOG_CAPACITY;
     if (log_count_ < FRAME_LOG_CAPACITY) log_count_++;
+  }
+
+  void enable_client_tcp_keepalive_() {
+    tcp_keepalive_configured_ = false;
+    if (!tcp_persistent_ || transport_ != "TCP") return;
+    const int fd = client_.fd();
+    if (fd < 0) return;
+    const int enable = 1;
+    bool ok = ::setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &enable, sizeof(enable)) == 0;
+#if defined(TCP_KEEPIDLE) && defined(TCP_KEEPINTVL) && defined(TCP_KEEPCNT)
+    const int idle_seconds = 15;
+    const int interval_seconds = 5;
+    const int probes = 3;
+    const bool idle_ok = ::setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE,
+                                      &idle_seconds, sizeof(idle_seconds)) == 0;
+    const bool interval_ok = ::setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL,
+                                          &interval_seconds, sizeof(interval_seconds)) == 0;
+    const bool probes_ok = ::setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT,
+                                        &probes, sizeof(probes)) == 0;
+    ok = ok && idle_ok && interval_ok && probes_ok;
+#else
+    // SO_KEEPALIVE is still enabled, but OS defaults may be much slower.
+    ok = false;
+#endif
+    tcp_keepalive_configured_ = ok;
+    if (!ok) {
+      ++tcp_keepalive_setup_failures_;
+      add_event_("TCP WARN", "TCP keepalive configuration incomplete; retry after remote failure may be slower.");
+    }
+  }
+
+  void maintain_persistent_tcp_client_() {
+    using namespace tcp_connection_policy;
+    if (!maintenance_allowed(tcp_mode_ == "CLIENT", transport_ == "TCP",
+                             tcp_persistent_, client_txn_.state == ClientTxnState::IDLE,
+                             rx_.empty() && Serial1.available() == 0)) return;
+    const uint32_t now = millis();
+    if (uint32_t(now - tcp_last_health_check_ms_) < kPollIntervalMs) return;
+    tcp_last_health_check_ms_ = now;
+
+    // Wi-Fi association is tracked by ESPHome. A stale TCP descriptor must
+    // never survive a disconnected/reassociated station.
+    const bool wifi_ready = wifi::global_wifi_component != nullptr &&
+                            wifi::global_wifi_component->is_connected();
+    if (!wifi_ready) {
+      if (tcp_link_was_up_) {
+        ++tcp_idle_disconnects_;
+        add_event_("TCP DOWN", "Wi-Fi disconnected; persistent TCP socket closed.");
+      }
+      if (client_.fd() >= 0) client_.stop();
+      tcp_link_was_up_ = false;
+      tcp_keepalive_configured_ = false;
+      tcp_next_reconnect_ms_ = now + kInitialRetryMs;
+      return;
+    }
+
+    if (client_.connected()) {
+      tcp_link_was_up_ = true;
+      tcp_retry_delay_ms_ = kInitialRetryMs;
+      return;
+    }
+    if (tcp_link_was_up_) {
+      ++tcp_idle_disconnects_;
+      add_event_("TCP DOWN", "Remote Modbus TCP connection closed while idle; reconnecting.");
+      tcp_link_was_up_ = false;
+      tcp_keepalive_configured_ = false;
+      tcp_next_reconnect_ms_ = now;
+    }
+    if (client_.fd() >= 0) client_.stop();
+    if (!due(now, tcp_next_reconnect_ms_)) return;
+
+    // No arbitrary Modbus heartbeat: only a bounded TCP handshake at a
+    // backoff-limited cadence. Writes are never replayed automatically.
+    ++tcp_reconnect_attempts_;
+    client_.setTimeout(tcp_timeout_ms_);
+    client_.setNoDelay(true);
+    if (client_.connect(cfg_host_.c_str(), cfg_port_, kIdleConnectTimeoutMs)) {
+      client_.setNoDelay(true);
+      enable_client_tcp_keepalive_();
+      tcp_link_was_up_ = true;
+      tcp_retry_delay_ms_ = kInitialRetryMs;
+      tcp_next_reconnect_ms_ = 0;
+      ++tcp_reconnect_successes_;
+      add_event_("TCP RESTORED", String("Persistent TCP connection established to ") +
+                 cfg_host_.c_str() + ":" + String(cfg_port_) + " (idle supervisor).");
+      return;
+    }
+    client_.stop();
+    ++tcp_reconnect_failures_;
+    tcp_next_reconnect_ms_ = millis() + tcp_retry_delay_ms_;
+    add_event_("TCP RETRY", String("Idle TCP reconnect failed; next attempt in ") +
+               String(tcp_retry_delay_ms_ / 1000U) + " seconds.");
+    tcp_retry_delay_ms_ = next_retry_delay(tcp_retry_delay_ms_);
   }
 
   static bool is_cacheable_read_request_(const std::vector<uint8_t> &pdu,
@@ -926,6 +1037,7 @@ class ModbusGateway : public Component {
       start_udp_client_transaction_(unit_id, pdu);
       return;
     }
+    tcp_last_health_check_ms_ = millis();  // Avoid a second idle handshake in this loop.
     uint32_t connect_started_us = micros();
     const String local_ip = local_wifi_ip_();
     const bool wifi_connected = wifi::global_wifi_component != nullptr &&
@@ -959,6 +1071,10 @@ class ModbusGateway : public Component {
       }
       client_txn_.connect_us = micros() - connect_started_us;
       client_.setNoDelay(true);
+      enable_client_tcp_keepalive_();
+      tcp_link_was_up_ = true;
+      tcp_retry_delay_ms_ = tcp_connection_policy::kInitialRetryMs;
+      tcp_next_reconnect_ms_ = 0;
       add_event_("TCP INFO", String("Connected to ") + target + " in " +
                  String(client_txn_.connect_us / 1000) + " ms.");
       ESP_LOGI("modbus_gateway", "TCP client: connected to %s:%u in %u ms", cfg_host_.c_str(),
@@ -1265,6 +1381,7 @@ class ModbusGateway : public Component {
 
     // Keep one TCP session open between RTU transactions when persistent mode
     // is enabled. This avoids a TCP handshake on every Modbus request.
+    tcp_last_health_check_ms_ = millis();  // Manual request owns this socket for now.
     const String local_ip = local_wifi_ip_();
     const bool wifi_connected = wifi::global_wifi_component != nullptr &&
                                 wifi::global_wifi_component->is_connected();
@@ -1295,6 +1412,10 @@ class ModbusGateway : public Component {
       }
       connect_us = micros() - connect_started_us;
       client_.setNoDelay(true);
+      enable_client_tcp_keepalive_();
+      tcp_link_was_up_ = tcp_persistent_;
+      tcp_retry_delay_ms_ = tcp_connection_policy::kInitialRetryMs;
+      tcp_next_reconnect_ms_ = 0;
       add_event_("TCP INFO", String("Connected to ") + target + " in " + String(connect_us / 1000) + " ms.");
       ESP_LOGI("modbus_gateway", "TCP client: connected to %s:%u in %u ms", cfg_host_.c_str(), unsigned(cfg_port_), unsigned(connect_us / 1000));
     }
@@ -1363,11 +1484,13 @@ class ModbusGateway : public Component {
       add_event_("TCP KEEP", String("Persistent connection kept open to ") + target + ".");
     }
     if (rest.empty()) {
+      client_.stop();  // A malformed response must not leave a reusable socket.
       add_event_("TCP ERROR", "The Modbus TCP server returned an empty response PDU.");
       ESP_LOGW("modbus_gateway", "TCP client: empty response PDU");
       return finish(false);
     }
     if (rest[0]!=pdu[0] && rest[0]!=uint8_t(pdu[0]|0x80)) {
+      client_.stop();
       add_event_("TCP ERROR", "The response function code does not match the request.");
       ESP_LOGW("modbus_gateway", "TCP client: response function code mismatch");
       return finish(false);
@@ -2557,8 +2680,21 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
       out += ":";
       out += String(cfg_port_);
     }
+    const bool supervised = tcp_mode_ == "CLIENT" && transport_ == "TCP" && tcp_persistent_;
+    const bool connected = tcp_mode_ == "CLIENT" && transport_ == "TCP" && client_.connected();
     out += "\",\"connected\":";
-    out += (tcp_mode_ == "CLIENT" && transport_ == "TCP" && client_.connected()) ? "true" : "false";
+    out += connected ? "true" : "false";
+    out += ",\"persistent_supervisor\":";
+    out += supervised ? "true" : "false";
+    out += ",\"keepalive_configured\":";
+    out += tcp_keepalive_configured_ ? "true" : "false";
+    out += ",\"reconnect_attempts\":" + String(tcp_reconnect_attempts_);
+    out += ",\"reconnect_successes\":" + String(tcp_reconnect_successes_);
+    out += ",\"reconnect_failures\":" + String(tcp_reconnect_failures_);
+    out += ",\"idle_disconnects\":" + String(tcp_idle_disconnects_);
+    out += ",\"keepalive_setup_failures\":" + String(tcp_keepalive_setup_failures_);
+    out += ",\"next_retry_ms\":" + String(supervised && !connected ?
+        tcp_connection_policy::retry_wait_ms(millis(), tcp_next_reconnect_ms_) : 0U);
     out += "}";
     return out;
   }
@@ -2692,6 +2828,16 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
   }
 
   void save_config_() {
+    // Do not switch the destination or transport halfway through a Modbus reply.
+    if (client_txn_.state != ClientTxnState::IDLE) {
+      web_.send(409, "text/plain; charset=utf-8", "Transaction Modbus en cours; recommencez l'enregistrement.");
+      return;
+    }
+    const std::string previous_host = cfg_host_;
+    const std::string previous_mode = tcp_mode_;
+    const std::string previous_transport = transport_;
+    const uint16_t previous_port = cfg_port_;
+    const bool previous_persistent = tcp_persistent_;
     int new_tx = web_.hasArg("tx") ? web_.arg("tx").toInt() : tx_gpio_;
     int new_rx = web_.hasArg("rx") ? web_.arg("rx").toInt() : rx_gpio_;
     int new_de = web_.hasArg("de") ? web_.arg("de").toInt() : de_re_gpio_;
@@ -2757,6 +2903,17 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
     prefs_.putUInt("cachettl", cache_ttl_ms_);
     prefs_.putBool("cacheauto", cache_ttl_adaptive_);
     cache_clear_();
+    if (previous_host != cfg_host_ || previous_port != cfg_port_ ||
+        previous_mode != tcp_mode_ || previous_transport != transport_ ||
+        previous_persistent != tcp_persistent_) {
+      // A changed destination must never reuse the old persistent socket.
+      client_.stop();
+      tcp_link_was_up_ = false;
+      tcp_keepalive_configured_ = false;
+      tcp_retry_delay_ms_ = tcp_connection_policy::kInitialRetryMs;
+      tcp_next_reconnect_ms_ = millis();
+      tcp_last_health_check_ms_ = 0;
+    }
     if (gpio_changed) {
       send_reboot_response_(web_.arg("lang") == "en");
       return;
