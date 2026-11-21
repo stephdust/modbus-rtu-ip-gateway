@@ -10,7 +10,7 @@ A Wi-Fi Modbus gateway built with **ESPHome**, **ESP32-S3** and the **Arduino fr
 
 > **Reference hardware:** [Waveshare ESP32-S3-RS485-CAN](https://docs.waveshare.com/ESP32-S3-RS485-CAN). The project defaults match this board's RS-485 signals: TX GPIO17, RX GPIO18 and RS485 enable GPIO21. The project maintainer reports successful testing with this device, including four connected Modbus TCP clients.
 
-> **Version 1.3.2 source on `main`:** supports **TCP Client, TCP Server, UDP Client and UDP Server**. The maintainer reports successful functional tests of the four modes; robustness testing remains pending. See [TCP/UDP development and UI behavior](docs/TCP_UDP_DEVELOPMENT.md).
+> **Version 1.3.8 source (release candidate):** supports **TCP Client, TCP Server, UDP Client and UDP Server**. TCP Client persistent connections now reconnect automatically even when RTU traffic and Web monitoring are idle. The maintainer reports successful testing on the ESP32-S3 gateway; comprehensive long-duration and multi-mode regression testing remains pending. See [TCP/UDP development and UI behavior](docs/TCP_UDP_DEVELOPMENT.md).
 
 ## Installation simplifiée dans Home Assistant (ESPHome)
 
@@ -18,9 +18,13 @@ A Wi-Fi Modbus gateway built with **ESPHome**, **ESP32-S3** and the **Arduino fr
 
 **[Guide pas à pas : Home Assistant, YAML, secrets, compilation, USB et OTA](docs/INSTALL_HOME_ASSISTANT.md)**
 
-### TCP/UDP web UI (v1.3.2)
+### TCP/UDP web UI (v1.3.8 source)
 
 The source interface labels the network section **Modbus IP**, offers a TCP/UDP selector, and includes four harmonized blue/cyan section thumbnails matching the RTU ↔ IP header artwork. The IP thumbnail explicitly shows **TCP / UDP**. The **Persistent TCP connection** control is displayed only for **TCP Client**; it is hidden for TCP Server and both UDP modes, and the stored TCP setting is preserved while UDP is selected.
+
+## Persistent TCP Client reconnect (v1.3.8)
+
+When **TCP Client + Persistent TCP connection** is enabled, the connection is checked independently of incoming RTU requests or the Web statistics page. Disconnected sockets are retried automatically using a bounded backoff, and TCP keepalive helps detect stale connections. The Web endpoint `/connections` exposes reconnect and keepalive counters. The supervisor never generates a synthetic Modbus request and never retries writes. For details and diagnostic instructions, see [TCP idle reconnect](docs/TCP_IDLE_RECONNECT.md).
 
 ## Transport and operating modes
 
