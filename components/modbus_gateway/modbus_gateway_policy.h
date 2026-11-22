@@ -136,6 +136,39 @@ inline bool rtu_reply_fits_window(uint32_t elapsed_us, size_t frame_bytes,
          <= uint64_t(window_ms) * 1000ULL;
 }
 
+// In client SWR mode only, a read's RTU reply becomes unsafe after its
+// master window, regardless of the configured TCP timeout (up to 30 s).
+// All arithmetic is wrap-safe for micros() timestamps and uses 64-bit when
+// converting a user-specified reply window from milliseconds.
+inline bool expired_rtu_read(uint8_t function, uint32_t age_us,
+                             uint32_t window_ms) {
+  return function >= 1U && function <= 4U && window_ms != 0U &&
+         uint64_t(age_us) >= uint64_t(window_ms) * 1000ULL;
+}
+
+// Only a COMPLETE, CRC-valid FC01..04 request at the HEAD of the RTU queue
+// may be discarded. Never jump over a write, unknown function or partial
+// frame. The caller uses the captured timestamp of this frame's LAST byte.
+inline bool discardable_expired_read(const uint8_t *frame, size_t bytes,
+                                     uint32_t age_us, uint32_t window_ms) {
+  return frame && bytes >= 8U && frame[0] >= 1U && frame[0] <= 247U &&
+         expired_rtu_read(frame[1], age_us, window_ms) &&
+         valid_rtu_crc(frame, 8U);
+}
+
+// connect() is synchronous in WiFiClient. A 30-second configured timeout
+// must not stall RTU parsing while Flow.io closes port 502 for OTA.
+// Cap ONLY client SWR foreground reads (background reads are already 250ms).
+// Other operations, particularly writes, retain their original timeout.
+inline uint32_t swr_read_connect_timeout_ms(uint32_t configured_ms,
+                                            uint32_t reply_window_ms) {
+  if (!reply_window_ms) return configured_ms;
+  const uint32_t half_window = reply_window_ms / 2U;
+  const uint32_t cap = half_window > 500U ? 500U
+                      : (half_window < 100U ? 100U : half_window);
+  return configured_ms < cap ? configured_ms : cap;
+}
+
 // Select the newest existing entry for a key BEFORE considering a free
 // slot. This also removes duplicate keys left by earlier firmware versions.
 // Entries hold only POD metadata, so this is allocation-free and host-testable.

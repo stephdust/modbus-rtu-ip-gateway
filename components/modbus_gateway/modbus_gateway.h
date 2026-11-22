@@ -121,6 +121,9 @@ class ModbusGateway : public Component {
           rx_timestamps_us_.clear();
           add_event_("RTU ERROR", "Pending RTU input buffer overflow; buffered bytes discarded.");
         }
+        // Clean up only timed-out CRC-valid reads at the FIFO head, even
+        // while an unrelated foreground TCP exchange is still pending.
+        purge_expired_rtu_reads_();
         parse_rtu_();
         // Schedule cache refresh after foreground RTU processing, never before it.
         schedule_client_cache_refresh_();
@@ -207,6 +210,9 @@ class ModbusGateway : public Component {
   uint32_t background_refresh_succeeded_{0};
   uint32_t background_refresh_failed_{0};
   uint32_t rtu_late_reply_dropped_{0};
+  uint32_t rtu_expired_queued_reads_{0};
+  uint32_t rtu_expired_foreground_reads_{0};
+  uint32_t rtu_last_expiry_report_ms_{0};
   uint32_t cache_fresh_hits_{0};
   uint32_t cache_stale_hits_{0};
   bool manual_rtu_id_{false};
@@ -781,6 +787,8 @@ class ModbusGateway : public Component {
            ",\"refresh_success\":" + String(background_refresh_succeeded_) +
            ",\"refresh_failure\":" + String(background_refresh_failed_) +
            ",\"late_rtu_dropped\":" + String(rtu_late_reply_dropped_) +
+           ",\"expired_queued_reads\":" + String(rtu_expired_queued_reads_) +
+           ",\"expired_tcp_reads\":" + String(rtu_expired_foreground_reads_) +
            ",\"ttl_min_ms\":" + String(min_ttl) +
            ",\"ttl_max_ms\":" + String(max_ttl) + "}";
   }
@@ -992,6 +1000,37 @@ class ModbusGateway : public Component {
     return false;
   }
 
+  void record_expired_queued_read_(uint32_t age_ms) {
+    ++rtu_expired_queued_reads_;
+    const uint32_t now = millis();
+    if (rtu_last_expiry_report_ms_ == 0U ||
+        uint32_t(now - rtu_last_expiry_report_ms_) >= 5000U) {
+      rtu_last_expiry_report_ms_ = now ? now : 1U;
+      add_event_("RTU EXPIRED", String("Queued FC01-04 read expired; age=") +
+                 String(age_ms) + " ms; pending=" + String(rx_.size()) +
+                 " bytes; total=" + String(rtu_expired_queued_reads_) + ".");
+    }
+  }
+
+  void purge_expired_rtu_reads_() {
+    // FIFO only. Incomplete/invalid frames and WRITEs must not be skipped.
+    if (!swr_client_mode_() || rx_.size() < 8U ||
+        rx_timestamps_us_.size() != rx_.size()) return;
+    const uint32_t now_us = micros();
+    uint8_t removed = 0U;
+    while (removed < 16U && rx_.size() >= 8U) {
+      const uint32_t age_us = uint32_t(now_us - rx_timestamps_us_[7U]);
+      if (!gateway_policy::discardable_expired_read(
+              rx_.data(), rx_.size(), age_us, rtu_reply_window_ms_)) break;
+      add_log_("RTU RX", rx_.data(), 8U);
+      rx_.erase(rx_.begin(), rx_.begin() + 8U);
+      rx_timestamps_us_.erase(rx_timestamps_us_.begin(),
+                              rx_timestamps_us_.begin() + 8U);
+      record_expired_queued_read_(age_us / 1000U);
+      ++removed;
+    }
+  }
+
   void parse_rtu_() {
     // A background refresh must NEVER block RTU cache hits. A foreground
     // network transaction remains serialized, as before.
@@ -1041,6 +1080,15 @@ class ModbusGateway : public Component {
                    "; bytes=" + String(frame.size()) + "; " + crc_detail +
                    "; total CRC errors=" + String(crc_error_count_) + ".");
         ESP_LOGW("modbus_gateway", "Discarded RTU request with invalid CRC (%s)", crc_detail.c_str());
+        continue;
+      }
+      // A further expired read might remain after the bounded FIFO purge.
+      // Do not start a TCP connection or serve an old cached RTU reply.
+      if (swr_client_mode_() && gateway_policy::expired_rtu_read(
+              frame[1], uint32_t(micros() - rtu_request_received_us),
+              rtu_reply_window_ms_)) {
+        record_expired_queued_read_(
+            uint32_t(micros() - rtu_request_received_us) / 1000U);
         continue;
       }
       std::vector<uint8_t> pdu(frame.begin()+1, frame.end()-2);
@@ -1183,6 +1231,18 @@ class ModbusGateway : public Component {
     const String local_ip = station_ip_text_(station);
     const String target = String(cfg_host_.c_str()) + ":" + String(cfg_port_);
     client_txn_.reused_connection = tcp_persistent_ && client_ && client_.connected();
+    // A 30s configured timeout must not block UART/Web during a Flow.io OTA.
+    // Only foreground SWR FC01-04 READs get a short TCP connect timeout.
+    // Writes and all legacy modes retain the full configured timeout.
+    const bool foreground_swr_read = swr_client_mode_() &&
+                                     !background_refresh && cacheable_read &&
+                                     pdu.size() == 5U &&
+                                     pdu[0] >= 1U && pdu[0] <= 4U;
+    const uint32_t connect_timeout_ms = background_refresh ? 250U :
+        (foreground_swr_read
+            ? gateway_policy::swr_read_connect_timeout_ms(
+                  tcp_timeout_ms_, rtu_reply_window_ms_)
+            : tcp_timeout_ms_);
     client_.setTimeout(tcp_timeout_ms_);
     client_.setNoDelay(true);
 
@@ -1215,7 +1275,7 @@ class ModbusGateway : public Component {
       // A background cache refresh must not block the UART/Web task for
       // the full foreground network timeout after a Wi-Fi/TCP outage.
       if (!client_.connect(cfg_host_.c_str(), cfg_port_,
-                           background_refresh ? 250 : int32_t(tcp_timeout_ms_))) {
+                           int32_t(connect_timeout_ms))) {
         client_txn_.connect_us = micros() - connect_started_us;
         add_event_("TCP ERROR", String("Connection to ") + target + " failed after " +
                    String(client_txn_.connect_us / 1000) + " ms (connect() returned false).");
@@ -1233,6 +1293,20 @@ class ModbusGateway : public Component {
                  String(client_txn_.connect_us / 1000) + " ms.");
       ESP_LOGI("modbus_gateway", "TCP client: connected to %s:%u in %u ms", cfg_host_.c_str(),
                unsigned(cfg_port_), unsigned(client_txn_.connect_us / 1000));
+    }
+
+    // If TCP connect consumed the master's entire reply window, do not
+    // forward this expired READ as a new network transaction.
+    if (foreground_swr_read && gateway_policy::expired_rtu_read(
+            pdu[0], uint32_t(micros() - end_to_end_started_us),
+            rtu_reply_window_ms_)) {
+      ++rtu_expired_foreground_reads_;
+      add_event_("RTU EXPIRED", "Foreground read expired during TCP connect; no Modbus PDU sent.");
+      client_.stop();
+      tcp_link_was_up_ = false;
+      tcp_keepalive_configured_ = false;
+      reset_client_transaction_();
+      return;
     }
 
     const uint16_t tid = transaction_id_++;
@@ -1419,6 +1493,26 @@ class ModbusGateway : public Component {
 
   void process_client_transaction_() {
     if (client_txn_.state == ClientTxnState::IDLE) return;
+    // Expired SWR READs can update the validated cache, but cannot answer
+    // on RTU. Demote to the existing background state without closing the
+    // persistent socket. Writes, FC23 and non-SWR modes are never demoted.
+    if (swr_client_mode_() && !client_txn_.background_refresh &&
+        client_txn_.cacheable_read &&
+        client_txn_.request_pdu.size() == 5U &&
+        gateway_policy::expired_rtu_read(
+            client_txn_.request_pdu[0],
+            uint32_t(micros() - client_txn_.end_to_end_started_us),
+            rtu_reply_window_ms_)) {
+      client_txn_.background_refresh = true;
+      last_background_refresh_ms_ = millis();
+      background_refresh_started_ms_ = last_background_refresh_ms_;
+      ++background_refresh_started_;
+      ++rtu_expired_foreground_reads_;
+      add_event_("RTU EXPIRED", String("Read FC") +
+                 String(client_txn_.request_pdu[0]) +
+                 " exceeded RTU deadline; TCP cache-only; total=" +
+                 String(rtu_expired_foreground_reads_) + ".");
+    }
     size_t budget = 512;  // Bound per-loop work so WebServer/Wi-Fi stay responsive.
     while (budget > 0) {
       if (client_txn_.state == ClientTxnState::WAIT_MBAP) {
@@ -2909,6 +3003,9 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
     out += ",\"wifi_status_disagreements\":" + String(tcp_status_mismatches_);
     out += ",\"tcp_connect_skipped_no_sta\":" + String(tcp_offline_connect_skips_);
     out += ",\"tcp_sta_link_losses\":" + String(tcp_station_link_losses_);
+    out += ",\"rtu_expired_queued_reads\":" + String(rtu_expired_queued_reads_);
+    out += ",\"rtu_expired_foreground_reads\":" + String(rtu_expired_foreground_reads_);
+    out += ",\"rtu_pending_bytes\":" + String(rx_.size());
     out += ",\"next_retry_ms\":" + String(supervised && !connected ?
         tcp_connection_policy::retry_wait_ms(millis(), tcp_next_reconnect_ms_) : 0U);
     out += "}";

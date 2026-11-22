@@ -142,5 +142,51 @@ int main() {
   assert(!gateway_policy::rtu_reply_fits_window(0U, 198U, 0U, 10U, 500U));
   assert(!gateway_policy::rtu_reply_fits_window(0U, 198U, 9600U, 10U, 0U));
 
+
+  // A long client TCP timeout (30 s in the user's gateway) must NOT make
+  // a foreground FC03 cache miss block serial processing for 30 seconds.
+  assert(gateway_policy::swr_read_connect_timeout_ms(30000U, 700U) == 350U);
+  assert(gateway_policy::swr_read_connect_timeout_ms(3000U, 500U) == 250U);
+  assert(gateway_policy::swr_read_connect_timeout_ms(30000U, 2000U) == 500U);
+  assert(gateway_policy::swr_read_connect_timeout_ms(150U, 700U) == 150U);
+  assert(gateway_policy::swr_read_connect_timeout_ms(3000U, 250U) == 125U);
+  assert(gateway_policy::swr_read_connect_timeout_ms(3000U, 0U) == 3000U);
+
+  // A queued RTU FC01-04 read may be dropped only if its CRC is valid,
+  // frame complete and last-byte time strictly past RTU deadline.
+  using gateway_policy::expired_rtu_read;
+  using gateway_policy::discardable_expired_read;
+  const auto old_read03 = rtu(17, std::vector<uint8_t>{3, 0, 52, 0, 97});
+  const auto old_read04 = rtu(17, std::vector<uint8_t>{4, 0, 52, 0, 2});
+  const auto old_write06 = rtu(17, std::vector<uint8_t>{6, 0, 52, 0, 1});
+  const auto old_write16 = rtu(17, std::vector<uint8_t>{16, 0, 52, 0, 1, 2, 0, 1});
+  const auto old_write23 = rtu(17, std::vector<uint8_t>{23, 0, 52, 0, 1, 0, 53, 0, 1, 2, 0, 1});
+  assert(old_read03.size() == 8U);
+  assert(!expired_rtu_read(3, 699999U, 700U));
+  assert(expired_rtu_read(3, 700000U, 700U));
+  assert(expired_rtu_read(4, 15000000U, 700U));
+  assert(!expired_rtu_read(5, 15000000U, 700U));
+  assert(!expired_rtu_read(6, 15000000U, 700U));
+  assert(!expired_rtu_read(16, 15000000U, 700U));
+  assert(!expired_rtu_read(23, 15000000U, 700U));
+  assert(!expired_rtu_read(3, 15000000U, 0U));
+  assert(!discardable_expired_read(old_read03.data(), 7U, 800000U, 700U));
+  assert(!discardable_expired_read(old_read03.data(), 8U, 699999U, 700U));
+  assert(discardable_expired_read(old_read03.data(), 8U, 700000U, 700U));
+  assert(discardable_expired_read(old_read04.data(), 8U, 15000000U, 700U));
+  assert(!discardable_expired_read(old_write06.data(), old_write06.size(), 15000000U, 700U));
+  assert(!discardable_expired_read(old_write16.data(), old_write16.size(), 15000000U, 700U));
+  assert(!discardable_expired_read(old_write23.data(), old_write23.size(), 15000000U, 700U));
+  auto damaged_read03 = old_read03;
+  damaged_read03[7] ^= 0x10;
+  assert(!discardable_expired_read(damaged_read03.data(), 8U, 15000000U, 700U));
+  damaged_read03 = old_read03;
+  damaged_read03[0] = 0U;  // Illegal Unit ID, even with valid CRC.
+  assert(!discardable_expired_read(damaged_read03.data(), 8U, 15000000U, 700U));
+  const uint32_t start_us = UINT32_MAX - 300000U;
+  const uint32_t now_us = start_us + 800000U; // micros() rollover
+  assert(discardable_expired_read(old_read03.data(), old_read03.size(),
+                                  uint32_t(now_us - start_us), 700U));
+
   return 0;
 }

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.15 — Recover from RTU read backlog during Flow.io OTA (2026-11-22)
+
+- In TCP Client + persistent SWR cache mode, bound new foreground FC01–04 TCP connect attempts to `min(configured timeout, clamp(RTU reply window/2, 100..500 ms))`. This avoids a user-configured 30 s TCP timeout stalling the ESPHome UART/Web loop during Flow.io's port 502 OTA pause. **Writes, UDP, non-SWR and legacy modes retain their configured timeout.**
+- Once a foreground read exceeds the RTU master's reply window while waiting for TCP, turn it into a validated **cache-only background refresh**, permitting newer RTU cache hits without answering late or needlessly closing an otherwise functional TCP socket.
+- Discard at most 16 **complete, CRC-valid, expired** FC01–04 requests from the head of the RTU input queue per loop. Preserve raw RTU RX logs and the anti-late-reply safeguard. Do not skip writes, corrupt frames, or incomplete requests.
+- Diagnose `rtu_expired_queued_reads`, `rtu_expired_foreground_reads`, `rtu_pending_bytes` in `/connections` and totals in `/cache-stats`. Limit queued-expiry diagnostic messages to one per 5 s.
+- Preserve the **v1.3.14 Web UI** exactly: unchanged 68,521-character HTML from 29 fragments, still delivered in **1 KiB HTTP chunks**. No CSS, form or JS modifications.
+- Tests: `tests/test_gateway_policy.cpp`, `tests/check_rtu_read_recovery.mjs`, `tests/check_webui_html_stream.mjs`. Source/host regression is not equivalent to a full ESPHome/ESP32-S3 build or hardware validation.
+
+
 ## 1.3.14 — HTML Web interface streamed in bounded chunks (2026-11-22)
 
 - Correct an intermittent or truncated dashboard: the full page includes more

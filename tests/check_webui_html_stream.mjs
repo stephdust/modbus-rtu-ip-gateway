@@ -14,7 +14,7 @@ const read = p => readFileSync(new URL(p, root), "utf8");
 const gateway = read("components/modbus_gateway/modbus_gateway.h");
 const manifest = JSON.parse(read("components/modbus_gateway/manifest.json"));
 
-assert.equal(manifest.version, "1.3.14");
+assert.equal(manifest.version, "1.3.15");
 assert.match(gateway, /web_\.on\("\/", HTTP_GET, \[this\]\(\) \{ this->send_page_\(\); \}\);/);
 assert.doesNotMatch(gateway, /String page_\(\)/);
 assert.doesNotMatch(gateway, /s\.reserve\(19000\)/);
