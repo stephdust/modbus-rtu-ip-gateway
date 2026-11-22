@@ -21,6 +21,8 @@
 #include "esphome/components/wifi/wifi_component.h"
 #include <vector>
 #include <string.h>
+#include <sys/time.h>
+#include <time.h>
 
 namespace esphome {
 namespace modbus_gateway {
@@ -43,6 +45,10 @@ class ModbusGateway : public Component {
 
   void setup() override {
     load_settings_();
+    // NTP runs asynchronously; Modbus traffic is never held waiting for time sync.
+    setenv("TZ", "CET-1CEST,M3.5.0/2,M10.5.0/3", 1);
+    tzset();
+    configTime(0, 0, "pool.ntp.org", "time.google.com");
     rx_.reserve(260);
     rx_timestamps_us_.reserve(260);
     client_txn_.request_pdu.reserve(253);
@@ -308,7 +314,23 @@ class ModbusGateway : public Component {
   };
   ResponseCacheEntry response_cache_[RESPONSE_CACHE_CAPACITY];
 
-  struct FrameLog { String direction; String hex; uint32_t when; };
+  struct FrameLog { String direction; String hex; uint32_t when; uint64_t epoch_ms; };
+  static uint64_t wall_clock_ms_() {
+    struct timeval tv{};
+    if (gettimeofday(&tv, nullptr) != 0 || tv.tv_sec < 1700000000) return 0;
+    return uint64_t(tv.tv_sec) * 1000ULL + uint64_t(tv.tv_usec / 1000);
+  }
+  static String format_frame_time_(const FrameLog &entry) {
+    if (!entry.epoch_ms) return String(entry.when) + " ms (uptime; NTP pending)";
+    time_t seconds = time_t(entry.epoch_ms / 1000ULL);
+    struct tm local{};
+    localtime_r(&seconds, &local);
+    char buffer[32];
+    strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &local);
+    char result[40];
+    snprintf(result, sizeof(result), "%s.%03u", buffer, unsigned(entry.epoch_ms % 1000ULL));
+    return String(result);
+  }
   FrameLog logs_[FRAME_LOG_CAPACITY];
   size_t log_head_{0};
   size_t log_count_{0};
@@ -321,7 +343,7 @@ class ModbusGateway : public Component {
       if (i) h += " ";
       h += b;
     }
-    logs_[log_head_] = {String(direction), h, millis()};
+    logs_[log_head_] = {String(direction), h, millis(), wall_clock_ms_()};
     log_head_ = (log_head_ + 1) % FRAME_LOG_CAPACITY;
     if (log_count_ < FRAME_LOG_CAPACITY) log_count_++;
   }
@@ -329,7 +351,7 @@ class ModbusGateway : public Component {
   // Store readable diagnostics in the same rolling log shown by the Web UI
   // and included in the frame-capture text export.
   void add_event_(const char *category, const String &message) {
-    logs_[log_head_] = {String(category), message, millis()};
+    logs_[log_head_] = {String(category), message, millis(), wall_clock_ms_()};
     log_head_ = (log_head_ + 1) % FRAME_LOG_CAPACITY;
     if (log_count_ < FRAME_LOG_CAPACITY) log_count_++;
   }
@@ -2762,7 +2784,7 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
     for (size_t i=0;i<visible;i++) {
       size_t idx=(log_head_+FRAME_LOG_CAPACITY-visible+i)%FRAME_LOG_CAPACITY;
       if (i) out+=",";
-      out+="{\"time\":\""+String(logs_[idx].when)+" ms\",\"dir\":\""+logs_[idx].direction+"\",\"hex\":\""+logs_[idx].hex+"\"}";
+      out+="{\"time\":\""+format_frame_time_(logs_[idx])+"\",\"dir\":\""+logs_[idx].direction+"\",\"hex\":\""+logs_[idx].hex+"\"}";
     }
     out+="]}";
     return out;
@@ -2775,7 +2797,7 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
     String chunk;
     chunk.reserve(2048);
     chunk += "Modbus RTU <-> TCP - Frame capture\r\n";
-    chunk += "Timestamps are milliseconds since ESP32 boot.\r\n";
+    chunk += "Timestamps: Europe/Paris local time with milliseconds (uptime fallback before NTP sync).\r\n";
     chunk += "Exported entries: ";
     chunk += String(log_count_);
     chunk += " (maximum retained: ";
@@ -2789,8 +2811,8 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
         web_.sendContent(chunk);
         chunk = "";
       }
-      chunk += String(logs_[idx].when);
-      chunk += " ms | ";
+      chunk += format_frame_time_(logs_[idx]);
+      chunk += " | ";
       chunk += logs_[idx].direction;
       chunk += " | ";
       chunk += logs_[idx].hex;
