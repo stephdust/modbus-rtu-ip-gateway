@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.12 — Faster bounded SWR refresh and runtime diagnostics (2026-11-22)
+
+- Reduce the global SWR refresh start interval from 1000 ms to 250 ms; retain a single in-flight TCP transaction.
+- Include elapsed time in successful and rejected background refresh logs.
+- Record free heap, largest allocatable heap block and maximum component loop duration once per minute.
+- No changes to RTU serial timing, TCP concurrency or persistent connection policy.
+
 ## 1.3.11 — Save cache settings during Modbus traffic (2026-11-22)
 
 - Allow cache TTL, adaptive mode, SWR maximum age and RTU response window to be saved while a TCP transaction is active.
