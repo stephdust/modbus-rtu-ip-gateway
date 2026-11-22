@@ -7,6 +7,8 @@
 - Log selected Unit ID, address, quantity and time overdue for comparison across register groups.
 - Requires ESPHome compilation and hardware validation; target cache age is not guaranteed by network response times.
 
+**Field observation (22 November 2026, ESP32-S3):** A 256-event capture around five minutes after boot showed 29 cache HIT and 10 STALE (25.6% stale), with maximum observed ages of 2489 ms (address 52), 1693 ms (address 500) and 1844 ms (address 1000). Nine TCP refreshes completed successfully and no explicit TCP errors appeared in this short window. An earlier v1.3.12 capture showed 3714 ms stale age for address 500. These are user-supplied short-window results, not a long-duration endurance or full-mode regression validation.
+
 ## 1.3.12 — Faster bounded SWR refresh and runtime diagnostics (2026-11-22)
 
 - Reduce the global SWR refresh start interval from 1000 ms to 250 ms; retain a single in-flight TCP transaction.
