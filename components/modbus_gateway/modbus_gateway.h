@@ -64,6 +64,7 @@ class ModbusGateway : public Component {
     web_.on("/img/esp32.jpg", HTTP_GET, [this]() { this->serve_image_(ESP32_IMG, "image/jpeg"); });
     web_.on("/img/frame-diagnostics.jpg", HTTP_GET, [this]() { this->serve_image_(FRAME_IMG, "image/jpeg"); });
     web_.on("/save", HTTP_POST, [this]() { this->save_config_(); });
+    web_.on("/save-rtu-window", HTTP_POST, [this]() { this->save_rtu_window_(); });
     web_.on("/reboot", HTTP_POST, [this]() { this->reboot_gateway_(); });
     web_.on("/frames", HTTP_GET, [this]() { web_.send(200, "application/json", this->frames_json_()); });
     web_.on("/cache-stats", HTTP_GET, [this]() { web_.sendHeader("Cache-Control", "no-store"); web_.send(200, "application/json", this->cache_stats_json_()); });
@@ -2382,7 +2383,7 @@ main>.bottom-actions>button{height:44px!important;min-height:44px!important;max-
     s += String(cache_swr_max_age_ms_);
     s += R"HTML("><label>Fenêtre maximale de réponse RTU (ms)</label><input name="rtu_window" type="number" form="cfg" min="250" max="2000" step="50" value=")HTML";
     s += String(rtu_reply_window_ms_);
-    s += R"HTML("></div><p class="muted">Mode client TCP uniquement. Une réponse correcte en cache peut être servie jusqu’à l’âge maximal ; une lecture périmée déclenche un rafraîchissement TCP sans seconde réponse RTU. Au-delà de l’âge maximal, la passerelle ne réutilise plus ces données. Les réponses RTU en retard sont supprimées ; les erreurs ne sont jamais mises en cache. Utiliser une limite d’âge compatible avec les exigences de sécurité des données.</p></div></div>
+    s += R"HTML("><button type="button" id="saveRtuWindow" onclick="saveRtuWindowOnly()" style="margin-top:8px">Enregistrer cette fenêtre uniquement</button><span id="rtuWindowSaveStatus" style="margin-left:8px"></span></div><p class="muted">Mode client TCP uniquement. Une réponse correcte en cache peut être servie jusqu’à l’âge maximal ; une lecture périmée déclenche un rafraîchissement TCP sans seconde réponse RTU. Au-delà de l’âge maximal, la passerelle ne réutilise plus ces données. Les réponses RTU en retard sont supprimées ; les erreurs ne sont jamais mises en cache. Utiliser une limite d’âge compatible avec les exigences de sécurité des données.</p></div></div>
 <div class="muted tcp-note">Le cache concerne uniquement les lectures Modbus (fonctions 01 à 04). L’option affichée correspond au mode Client/Serveur sélectionné ; le réglage de l’autre mode est conservé. Les écritures réussies invalident les réponses mémorisées pour l’Unit ID concerné. 64 entrées maximum.</div>
 </div></section>
 <section><h2><span class="section-badge section-badge-rtu" aria-hidden="true"><img src="/img/modbus-rtu.jpg" alt=""><small>RTU</small></span>Paramètres Modbus RTU</h2><div class="grid">
@@ -2825,6 +2826,30 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
     const bool english = web_.arg("lang") == "en";
     add_event_("SYSTEM", "Manual reboot requested from Web UI.");
     send_reboot_response_(english);
+  }
+
+  // This setting is independent of the active TCP/RTU transaction.
+  // Save it without resetting the socket, UART or response cache.
+  void save_rtu_window_() {
+    if (!web_.hasArg("rtu_window")) {
+      web_.send(400, "text/plain; charset=utf-8", "Valeur manquante.");
+      return;
+    }
+    const String raw = web_.arg("rtu_window");
+    const int window = raw.toInt();
+    if (window < 250 || window > 2000 || window % 50 != 0 ||
+        String(window) != raw) {
+      web_.send(400, "text/plain; charset=utf-8", "Valeur invalide (250-2000 ms, pas de 50).");
+      return;
+    }
+    if (window != int(rtu_reply_window_ms_)) {
+      if (prefs_.putUInt("rtuwindow", uint32_t(window)) != sizeof(uint32_t)) {
+        web_.send(500, "text/plain; charset=utf-8", "Echec de l'enregistrement.");
+        return;
+      }
+      rtu_reply_window_ms_ = uint32_t(window);
+    }
+    web_.send(200, "text/plain; charset=utf-8", "OK");
   }
 
   void save_config_() {
