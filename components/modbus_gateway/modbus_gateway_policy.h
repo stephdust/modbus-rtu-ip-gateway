@@ -136,25 +136,6 @@ inline bool rtu_reply_fits_window(uint32_t elapsed_us, size_t frame_bytes,
          <= uint64_t(window_ms) * 1000ULL;
 }
 
-// A queued, valid RTU READ (FC01..FC04) becomes worthless once its
-// master's reply window has elapsed. Do not discard writes (FC05, FC06,
-// FC0F, FC10, FC17), incomplete/misaligned bytes or invalid-CRC frames.
-// A 64-bit comparison avoids overflow with large configurable windows.
-inline bool read_reply_window_expired(uint8_t function_code,
-                                     uint32_t elapsed_us, uint32_t window_ms) {
-  return function_code >= 1U && function_code <= 4U &&
-         window_ms != 0U &&
-         uint64_t(elapsed_us) >= uint64_t(window_ms) * 1000ULL;
-}
-
-inline bool discardable_expired_rtu_read(const uint8_t* head, size_t buffered_bytes,
-                                         uint32_t elapsed_us, uint32_t window_ms) {
-  return head && buffered_bytes >= 8U &&
-         head[0] >= 1U && head[0] <= 247U &&
-         read_reply_window_expired(head[1], elapsed_us, window_ms) &&
-         valid_rtu_crc(head, 8U);
-}
-
 // Select the newest existing entry for a key BEFORE considering a free
 // slot. This also removes duplicate keys left by earlier firmware versions.
 // Entries hold only POD metadata, so this is allocation-free and host-testable.
