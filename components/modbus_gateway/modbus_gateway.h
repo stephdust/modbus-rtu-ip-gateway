@@ -2442,14 +2442,15 @@ main>.bottom-actions>button{height:44px!important;min-height:44px!important;max-
 <form id="cfg" method="POST" action="/save"><input type="hidden" id="form_lang" name="lang" value="fr"></form>
 <form id="rebootForm" method="POST" action="/reboot"><input type="hidden" id="reboot_lang" name="lang" value="fr"></form>
 <section><h2><span class="section-badge section-badge-log" aria-hidden="true"><img src="/img/frame-diagnostics.jpg" alt=""><small>LOG</small></span>Debug des trames</h2>
-<p class="muted">RTU RX/TX et IP TCP/UDP TX/RX · rafraîchissement automatique toutes les 1,5 s</p>
-<p class="muted">Les tentatives de connexion TCP et les erreurs réseau sont également affichées dans cette fenêtre.</p>
 
 <div class="manual-frame-panel"><h3 data-fr="Envoi manuel d’une trame Modbus IP" data-en="Manual Modbus IP frame transmission">Envoi manuel d’une trame Modbus IP</h3><label for="rtuFrame">Trame RTU à envoyer (hexadécimal, avec adresse et CRC, ex. 0B 03 00 00 00 01 84 A0)</label>
 <input id="rtuFrame" placeholder="0B 03 00 00 00 01 ... CRC" autocomplete="off">
 <button type="button" onclick="sendManual()" style="margin-top:10px">Envoyer au serveur TCP</button>
 <p class="muted">Réponse du serveur Modbus IP :</p><pre id="manualResponse">Aucune requête manuelle</pre></div>
 <div class="frame-monitor-panel"><h3 data-fr="Écoute et capture des trames RTU / IP" data-en="RTU / IP frame monitoring and capture">Écoute et capture des trames RTU / IP</h3>
+<p class="muted">RTU RX/TX et IP TCP/UDP TX/RX · rafraîchissement automatique toutes les 1,5 s</p>
+<p class="muted">Les tentatives de connexion TCP et les erreurs réseau sont également affichées dans cette fenêtre.</p>
+
 <div class="frame-actions"><button id="listenBtn" type="button" onclick="toggleListen()">Arrêter l’écoute RTU</button><button type="button" onclick="clearFrames()">Vider l’affichage des trames</button><a class="button-link" href="/frames.txt">Exporter la capture des trames (.txt)</a><span id="listenState">Écoute RTU active</span></div>
 <p class="muted">L’export contient les 256 dernières entrées mémorisées, y compris les mesures de latence.</p>
 <pre id="frames">Chargement des trames…</pre></div></section>
