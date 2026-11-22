@@ -71,7 +71,7 @@ class ModbusGateway : public Component {
     web_.on("/connections", HTTP_GET, [this]() { web_.sendHeader("Cache-Control", "no-store"); web_.send(200, "application/json", this->connections_json_()); });
     web_.on("/frames.txt", HTTP_GET, [this]() {
       web_.sendHeader("Content-Disposition", "attachment; filename=\"modbus-frame-capture.txt\"");
-      web_.send(200, "text/plain; charset=utf-8", this->frames_text_());
+      this->send_frames_text_();
     });
     web_.on("/clear", HTTP_POST, [this]() { log_head_ = 0; log_count_ = 0; web_.send(200, "application/json", "{\"cleared\":true}"); });
     web_.on("/listen", HTTP_GET, [this]() { web_.send(200, "application/json", String("{\"listening\":") + (rtu_listening_ ? "true}" : "false}")); });
@@ -266,7 +266,8 @@ class ModbusGateway : public Component {
   uint32_t last_rx_ms_{0};
   uint32_t crc_error_count_{0};  // Invalid RTU frames discarded since boot.
 
-  static constexpr size_t FRAME_LOG_CAPACITY = 64;
+  static constexpr size_t FRAME_LOG_CAPACITY = 256;
+  static constexpr size_t FRAME_WEB_VISIBLE = 64;
   static constexpr size_t RESPONSE_CACHE_CAPACITY = 64;
   static constexpr size_t RESPONSE_CACHE_MAX_PDU = 253;
   static constexpr uint8_t CACHE_DIRECTION_CLIENT = 0;
@@ -2432,7 +2433,7 @@ main>.bottom-actions>button{height:44px!important;min-height:44px!important;max-
 <p class="muted">Réponse du serveur Modbus IP :</p><pre id="manualResponse">Aucune requête manuelle</pre></div>
 <div class="frame-monitor-panel"><h3 data-fr="Écoute et capture des trames RTU / IP" data-en="RTU / IP frame monitoring and capture">Écoute et capture des trames RTU / IP</h3>
 <div class="frame-actions"><button id="listenBtn" type="button" onclick="toggleListen()">Arrêter l’écoute RTU</button><button type="button" onclick="clearFrames()">Vider l’affichage des trames</button><a class="button-link" href="/frames.txt">Exporter la capture des trames (.txt)</a><span id="listenState">Écoute RTU active</span></div>
-<p class="muted">L’export contient les 64 dernières entrées mémorisées, y compris les mesures de latence.</p>
+<p class="muted">L’export contient les 256 dernières entrées mémorisées, y compris les mesures de latence.</p>
 <pre id="frames">Chargement des trames…</pre></div></section>
 <script>
 let currentLanguage='fr';
@@ -2484,7 +2485,7 @@ const translations={
 'Les tentatives de connexion TCP et les erreurs réseau sont également affichées dans cette fenêtre.':'TCP connection attempts and network errors are also displayed in this window.',
 'Arrêter l’écoute RTU':'Stop RTU listening','Reprendre l’écoute RTU':'Resume RTU listening','Écoute RTU active':'RTU listening','Écoute RTU suspendue':'RTU listening paused','Erreur de commande':'Command error',
 'Trame RTU à envoyer (hexadécimal, avec adresse et CRC, ex. 0B 03 00 00 00 01 84 A0)':'RTU frame to send (hexadecimal, including address and CRC, e.g. 0B 03 00 00 00 01 84 A0)',
-'Envoyer au serveur TCP':'Send to TCP server','Réponse du serveur Modbus IP :':'Modbus IP server response:','Aucune requête manuelle':'No manual request','Vider l’affichage des trames':'Clear frame log','Exporter la capture des trames (.txt)':'Export frame capture (.txt)','L’export contient les 64 dernières entrées mémorisées, y compris les mesures de latence.':'The export contains the 64 most recent stored entries, including timing diagnostics.','Chargement des trames…':'Loading frames…','Aucune trame':'No frames',
+'Envoyer au serveur TCP':'Send to TCP server','Réponse du serveur Modbus IP :':'Modbus IP server response:','Aucune requête manuelle':'No manual request','Vider l’affichage des trames':'Clear frame log','Exporter la capture des trames (.txt)':'Export frame capture (.txt)','L’export contient les 256 dernières entrées mémorisées, y compris les mesures de latence.':'The export contains the 256 most recent stored entries, including timing diagnostics.','Chargement des trames…':'Loading frames…','Aucune trame':'No frames',
 'CRC Erreur':'CRC Error','CRC ERROR':'Erreur CRC','RTU ERROR':'Erreur RTU','Client mode | RTU request discarded; Unit ID=':'Mode Client | requête RTU rejetée ; ID unité=','Server mode | RTU response discarded; RTU Unit ID=':'Mode Serveur | réponse RTU rejetée ; ID unité RTU=','Server mode | No complete RTU response; Unit ID=':'Mode Serveur | aucune réponse RTU complète ; ID unité=','; Function=':'; fonction=','; bytes=':'; octets=','; received=0x':'; CRC reçu=0x','; calculated=0x':'; CRC calculé=0x','; total CRC errors=':'; total erreurs CRC=','. TCP gateway exception 0x0B returned.':'. Exception passerelle TCP 0x0B renvoyée.','Erreur':'Error','CRC OK':'CRC OK','Envoi en cours…':'Sending…','Erreur de communication avec la passerelle':'Gateway communication error',
 'Erreur : saisir une trame RTU complète en hexadécimal (adresse, fonction, données, CRC).':'Error: enter a complete RTU frame in hexadecimal (address, function, data, CRC).',
 'Erreur : caractère hexadécimal invalide.':'Error: invalid hexadecimal character.',
@@ -2722,8 +2723,9 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
     String out;
     out.reserve(12288);
     out = "{\"frames\":[";
-    for (size_t i=0;i<log_count_;i++) {
-      size_t idx=(log_head_+FRAME_LOG_CAPACITY-log_count_+i)%FRAME_LOG_CAPACITY;
+    const size_t visible = log_count_ < FRAME_WEB_VISIBLE ? log_count_ : FRAME_WEB_VISIBLE;
+    for (size_t i=0;i<visible;i++) {
+      size_t idx=(log_head_+FRAME_LOG_CAPACITY-visible+i)%FRAME_LOG_CAPACITY;
       if (i) out+=",";
       out+="{\"time\":\""+String(logs_[idx].when)+" ms\",\"dir\":\""+logs_[idx].direction+"\",\"hex\":\""+logs_[idx].hex+"\"}";
     }
@@ -2731,28 +2733,36 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
     return out;
   }
 
-  String frames_text_() {
-    String out;
-    out.reserve(12288);
-    out += "Modbus RTU <-> TCP - Frame capture\r\n";
-    out += "Timestamps are milliseconds since ESP32 boot.\r\n";
-    out += "Exported entries: ";
-    out += String(log_count_);
-    out += " (maximum retained: 64)\r\n\r\n";
-    if (log_count_ == 0) {
-      out += "No frames recorded.\r\n";
-      return out;
-    }
+  // Export in bounded chunks: no full-history HTTP String allocation.
+  void send_frames_text_() {
+    web_.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    web_.send(200, "text/plain; charset=utf-8", "");
+    String chunk;
+    chunk.reserve(2048);
+    chunk += "Modbus RTU <-> TCP - Frame capture\r\n";
+    chunk += "Timestamps are milliseconds since ESP32 boot.\r\n";
+    chunk += "Exported entries: ";
+    chunk += String(log_count_);
+    chunk += " (maximum retained: ";
+    chunk += String(FRAME_LOG_CAPACITY);
+    chunk += ")\r\n\r\n";
+    if (log_count_ == 0) chunk += "No frames recorded.\r\n";
     for (size_t i=0; i<log_count_; i++) {
       const size_t idx = (log_head_ + FRAME_LOG_CAPACITY - log_count_ + i) % FRAME_LOG_CAPACITY;
-      out += String(logs_[idx].when);
-      out += " ms | ";
-      out += logs_[idx].direction;
-      out += " | ";
-      out += logs_[idx].hex;
-      out += "\r\n";
+      const size_t estimated = logs_[idx].direction.length() + logs_[idx].hex.length() + 40U;
+      if (chunk.length() + estimated > 2048U && chunk.length() > 0U) {
+        web_.sendContent(chunk);
+        chunk = "";
+      }
+      chunk += String(logs_[idx].when);
+      chunk += " ms | ";
+      chunk += logs_[idx].direction;
+      chunk += " | ";
+      chunk += logs_[idx].hex;
+      chunk += "\r\n";
     }
-    return out;
+    if (chunk.length()) web_.sendContent(chunk);
+    web_.sendContent("");
   }
 
   static String hex_bytes_(const std::vector<uint8_t> &data) {
