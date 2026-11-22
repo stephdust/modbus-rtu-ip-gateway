@@ -84,6 +84,7 @@ class ModbusGateway : public Component {
   }
 
   void loop() override {
+    const uint32_t loop_started_us = micros();
     web_.handleClient();
     if (tcp_mode_ == "SERVER") {
       if (transport_ == "UDP") handle_udp_server_();
@@ -128,6 +129,17 @@ class ModbusGateway : public Component {
       rx_.clear();
       rx_timestamps_us_.clear();
     }
+    const uint32_t loop_duration_us = uint32_t(micros() - loop_started_us);
+    if (loop_duration_us > diagnostics_loop_max_us_) diagnostics_loop_max_us_ = loop_duration_us;
+    const uint32_t now_ms = millis();
+    if (diagnostics_last_report_ms_ == 0U) diagnostics_last_report_ms_ = now_ms;
+    if (uint32_t(now_ms - diagnostics_last_report_ms_) >= 60000U) {
+      diagnostics_last_report_ms_ = now_ms;
+      add_event_("PERF", String("Heap free=") + String(ESP.getFreeHeap()) +
+                 " B; max alloc=" + String(ESP.getMaxAllocHeap()) +
+                 " B; loop max=" + String(diagnostics_loop_max_us_) + " us.");
+      diagnostics_loop_max_us_ = 0U;
+    }
   }
 
   float get_setup_priority() const override { return setup_priority::AFTER_WIFI; }
@@ -168,6 +180,8 @@ class ModbusGateway : public Component {
   uint32_t last_background_refresh_ms_{0};
   uint32_t background_refresh_started_{0};
   uint32_t background_refresh_started_ms_{0};
+  uint32_t diagnostics_last_report_ms_{0};
+  uint32_t diagnostics_loop_max_us_{0};
   uint32_t background_refresh_succeeded_{0};
   uint32_t background_refresh_failed_{0};
   uint32_t rtu_late_reply_dropped_{0};
