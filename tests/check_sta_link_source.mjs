@@ -54,4 +54,13 @@ assert.match(t, /assert\(status_disagrees\(false, true, true\)\)/);
 assert.match(h, /if \(client_txn_\.state != ClientTxnState::IDLE/);
 assert.match(h, /cached_response_tmp_\.clear\(\)/);
 assert.match(h, /client_rtu_reply_is_timely_/);
+
+const jsonFn = h.split("String connections_json_() {")[1]
+  ?.split("String frames_json_() {")[0];
+assert.ok(jsonFn, "Missing /connections JSON method");
+assert.match(jsonFn, /const StationLinkState sta = station_link_state_\(\);/);
+assert.match(jsonFn, /out \+= station_ip_text_\(sta\);/);
+assert.doesNotMatch(h, /local_wifi_ip_\s*\(/,
+  "Deleted legacy helper must not be referenced by /connections");
+
 console.log("PASS: STA connection gating, disagreement logs, AP-only exclusion, TCP + cache invariants");

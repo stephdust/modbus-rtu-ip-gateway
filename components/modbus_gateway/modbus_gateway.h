@@ -2794,12 +2794,14 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
   }
 
   String connections_json_() {
+    // One coherent network-state snapshot for all /connections fields.
+    const StationLinkState sta = station_link_state_();
     String out = "{\"mode\":\"";
     out += tcp_mode_.c_str();
     out += "\",\"transport\":\"";
     out += transport_.c_str();
     out += "\",\"wifi_ip\":\"";
-    out += local_wifi_ip_();
+    out += station_ip_text_(sta);
     out += "\",\"port\":";
     out += String(cfg_port_);
     out += ",\"clients\":[";
@@ -2831,7 +2833,6 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
     const bool connected = tcp_mode_ == "CLIENT" && transport_ == "TCP" && client_.connected();
     // Expose all three independent signals, never confusing fallback AP
     // reachability with STA readiness or a live Modbus TCP connection.
-    const StationLinkState sta = station_link_state_();
     out += "\",\"wifi_esphome_connected\":";
     out += sta.esphome_connected ? "true" : "false";
     out += ",\"wifi_sta_associated\":";
