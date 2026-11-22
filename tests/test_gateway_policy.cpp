@@ -142,5 +142,40 @@ int main() {
   assert(!gateway_policy::rtu_reply_fits_window(0U, 198U, 0U, 10U, 500U));
   assert(!gateway_policy::rtu_reply_fits_window(0U, 198U, 9600U, 10U, 0U));
 
+  // Expired queued READs are safe to suppress; we must never silently
+  // discard a write, including FC23 read/write multiple registers.
+  const auto queued03 = rtu(17, std::vector<uint8_t>{3, 0, 52, 0, 97});
+  assert(queued03.size() == 8U);
+  const auto queued04 = rtu(17, std::vector<uint8_t>{4, 0, 52, 0, 2});
+  const auto queued06 = rtu(17, std::vector<uint8_t>{6, 0, 52, 0, 1});
+  const auto queued16 = rtu(17, std::vector<uint8_t>{16, 0, 52, 0, 1, 2, 0, 1});
+  const auto queued23 = rtu(17, std::vector<uint8_t>{23, 0, 52, 0, 1, 0, 53, 0, 1, 2, 0, 1});
+  using gateway_policy::read_reply_window_expired;
+  using gateway_policy::discardable_expired_rtu_read;
+  assert(!read_reply_window_expired(3, 699999U, 700U));
+  assert(read_reply_window_expired(3, 700000U, 700U));
+  assert(read_reply_window_expired(4, 800000U, 700U));
+  assert(!read_reply_window_expired(6, 16000000U, 700U));
+  assert(!read_reply_window_expired(16, 16000000U, 700U));
+  assert(!read_reply_window_expired(23, 16000000U, 700U));
+  assert(!read_reply_window_expired(3, 16000000U, 0U));
+  assert(!discardable_expired_rtu_read(queued03.data(), 7U, 16000000U, 700U));
+  assert(!discardable_expired_rtu_read(queued03.data(), 8U, 699999U, 700U));
+  assert(discardable_expired_rtu_read(queued03.data(), 8U, 700000U, 700U));
+  assert(discardable_expired_rtu_read(queued04.data(), 8U, 16000000U, 700U));
+  assert(!discardable_expired_rtu_read(queued06.data(), queued06.size(), 16000000U, 700U));
+  assert(!discardable_expired_rtu_read(queued16.data(), queued16.size(), 16000000U, 700U));
+  assert(!discardable_expired_rtu_read(queued23.data(), queued23.size(), 16000000U, 700U));
+  auto invalid_queued03 = queued03;
+  invalid_queued03[7] ^= 0x40;
+  assert(!discardable_expired_rtu_read(invalid_queued03.data(), 8U, 16000000U, 700U));
+  invalid_queued03 = queued03;
+  invalid_queued03[0] = 0;  // Illegal Modbus Unit ID.
+  assert(!discardable_expired_rtu_read(invalid_queued03.data(), 8U, 16000000U, 700U));
+  const uint32_t start_us = UINT32_MAX - 300000U;
+  const uint32_t now_us = start_us + 800000U;  // micros() rollover
+  assert(discardable_expired_rtu_read(
+      queued03.data(), queued03.size(), uint32_t(now_us - start_us), 700U));
+
   return 0;
 }
