@@ -2436,6 +2436,24 @@ main>.bottom-actions>button{height:44px!important;min-height:44px!important;max-
 <pre id="frames">Chargement des trames…</pre></div></section>
 <script>
 let currentLanguage='fr';
+async function saveRtuWindowOnly(){
+ const field=document.querySelector('input[name="rtu_window"]');
+ const button=document.getElementById('saveRtuWindow');
+ const status=document.getElementById('rtuWindowSaveStatus');
+ const value=Number(field.value);
+ const en=currentLanguage==='en';
+ if(!Number.isInteger(value)||value<250||value>2000||value%50!==0){
+   status.textContent=en?'Enter 250–2000 ms in steps of 50.':'Saisir 250 à 2000 ms par pas de 50.';return;
+ }
+ button.disabled=true;status.textContent=en?'Saving…':'Enregistrement…';
+ try{
+   const response=await fetch('/save-rtu-window',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'rtu_window='+encodeURIComponent(value)});
+   if(!response.ok)throw new Error(await response.text());
+   status.textContent=en?'Saved; applies to next transaction.':'Enregistré ; appliqué à la prochaine transaction.';
+ }catch(error){status.textContent=(en?'Save failed: ':'Échec : ')+error.message;}
+ finally{button.disabled=false;}
+}
+
 const translations={
 'Gestion du TTL':'TTL management','TTL fixe':'Fixed TTL','TTL adaptatif':'Adaptive TTL',
 'Cache client : répondre immédiatement et rafraîchir en arrière-plan':'Client cache: respond immediately and refresh in background',
