@@ -78,7 +78,7 @@ The frame diagnostics and `.txt` export show cache events:
 
 On a cache hit, Client mode sends the cached PDU back over RTU. Server mode creates a fresh TCP MBAP header using the current request's Transaction ID and TCP Unit ID, and does not transmit anything on RS-485 for that request.
 
-## Bounded stale-while-revalidate (v1.3.2)
+## Bounded stale-while-revalidate (introduced v1.3.2; scheduler updated v1.3.13)
 
 In **TCP Client (RTU → TCP)** mode, enable **Client cache**, keep
 **Persistent TCP connection** enabled, then select
@@ -89,7 +89,7 @@ UDP Server retain their previous cache behavior.
 1. **Fresh hit:** reply immediately with the last validated read PDU.
 2. **Stale hit:** if the entry is older than the fixed/adaptive TTL but below
    the maximum data age, reply immediately with the last validated PDU,
-   and trigger a single background TCP refresh. On successful validation,
+   and make it eligible for background TCP refresh. On successful validation,
    the cache is updated **without transmitting another RTU frame**.
 3. **Cache miss or age exceeded:** do not use old data. The gateway performs
    a foreground TCP transaction. A late RTU reply is dropped if its complete
@@ -97,8 +97,7 @@ UDP Server retain their previous cache behavior.
 4. While a background refresh is pending, cached RTU requests continue to
    receive immediate answers. An uncached foreground request closes the
    background TCP socket before starting its own transaction.
-5. Refresh starts are rate-limited to one per second. A failed refresh
-   never generates an RTU error/exception frame.
+5. Since v1.3.13, an idle TCP client chooses the **most overdue active cache key** (age minus effective TTL), not merely the RTU request that happens to arrive while TCP is free. Only recently requested, still SWR-eligible keys are considered. Refresh starts are subject to a **250 ms minimum interval**, and at most one TCP transaction is in flight. A failed refresh never generates an RTU error/exception frame.
 
 **Configurable bounds:** maximum data age 1,000–30,000 ms (default 10,000),
 and RTU reply window 250–2,000 ms (default 500). The maximum age is measured
@@ -117,10 +116,22 @@ serving for measurements that require always-current process/safety values.
 `max_age_ms`, `rtu_window_ms`, `stale_entries`,
 `fresh_hits`, `stale_hits`, `refresh_pending`, `refresh_started`,
 `refresh_success`, `refresh_failure`, and `late_rtu_dropped`.
-Logs include `CACHE STALE`, `CACHE REFRESH`, `CACHE REFRESH OK`,
+`CACHE REFRESH` additionally identifies the scheduled Unit ID, function, address, quantity and time overdue in milliseconds. Logs include `CACHE STALE`, `CACHE REFRESH`, `CACHE REFRESH OK`,
 `CACHE REFRESH ERROR` and `RTU DEADLINE`.
 
 **Field result (18 November 2026):** the maintainer reports that the new v1.3.2 cache works well with the physical RTU display and the Flow.io Modbus TCP server. This confirms operation in that installation, not general correctness across every mode, loss-of-network condition or safety-critical register. Host-side test cases exist for cache ageing and RTU deadlines, but no independent long-run hardware stress test is documented.
+
+## v1.3.13 field measurements (22 November 2026)
+
+The maintainer supplied a 256-event capture from an ESP32-S3 running around **301–308 seconds after boot** (a ~6.9-second retained window). The workload repeatedly polls Unit ID 17, FC03, at addresses **52 (97 registers), 500 (28 registers), and 1000 (3 registers)** through a persistent TCP connection. Across **39 cache decisions**, there were **29 fresh HIT** and **10 STALE** (25.6% stale). The maximum observed cached-response ages were:
+
+| Starting address | Maximum observed age |
+|---|---:|
+| 52 | 2,489 ms |
+| 500 | 1,693 ms |
+| 1000 | 1,844 ms |
+
+Nine background refreshes completed successfully during the retained window; no explicit TCP error appears in this excerpt. The scheduling log shows successive refreshes of the three groups. An earlier v1.3.12 capture included a **3,714 ms** stale age for address 500; the v1.3.13 sample is therefore encouraging, **not a controlled long-run benchmark**. One address 52 response still exceeded 2 seconds, and network/remote-server latency remains relevant. The 256-entry capture spans only seconds, so it cannot establish overnight socket stability, heap behavior, or performance in other transport modes.
 
 ## Data freshness warning
 
