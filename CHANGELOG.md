@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.3.14 — HTML Web interface streamed in bounded chunks (2026-11-22)
+
+- Correct an intermittent or truncated dashboard: the full page includes more
+  than 68 KB of static HTML/JavaScript. The old `String page_()` dynamically
+  expanded a single 19 KB-reserved buffer, potentially exhausting contiguous
+  heap around the SWR settings and hiding the remaining configuration panels.
+- Keep the HTML and dynamic form fields unchanged, but send it via HTTP chunked
+  transfer in buffers no larger than 1024 bytes. Send the final chunk and
+  reset the WebServer content-length state; disable HTML caching so reloads
+  cannot silently display an older partial page.
+- Keep images on their existing independent URLs, avoid allocating a giant
+  temporary page String, and preserve Wi-Fi STA, Modbus RTU/TCP, cache SWR,
+  write safety and the 700 ms RTU response window.
+- Version increases from 1.3.13 to 1.3.14 so Home Assistant/ESPHome users can
+  verify the *running* firmware after compiling and flashing the new `main`.
+- The previously attempted read-expiry queue patch has been reverted and is
+  **not** included. Hardware ESPHome compilation and actual browser testing
+  remain to be completed.
+
+
 ## Unreleased — Millisecond wall-clock frame timestamps (2026-11-22)
 
 - Replace boot-relative millisecond timestamps with local `YYYY-MM-DD HH:mm:ss.SSS` timestamps in the live Web frame monitor and `/frames.txt` export, for RTU/IP traffic and diagnostics.

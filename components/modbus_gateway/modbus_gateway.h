@@ -59,7 +59,7 @@ class ModbusGateway : public Component {
     for (auto &slot : tcp_clients_) slot.pdu.reserve(253);
     setup_gpio_();
     begin_uart_();
-    web_.on("/", HTTP_GET, [this]() { web_.send(200, "text/html; charset=utf-8", this->page_()); });
+    web_.on("/", HTTP_GET, [this]() { this->send_page_(); });
     // Lightweight readiness endpoint used by the reboot page before redirecting.
     web_.on("/health", HTTP_GET, [this]() {
       web_.sendHeader("Cache-Control", "no-store, no-cache, must-revalidate");
@@ -2222,10 +2222,55 @@ class ModbusGateway : public Component {
     }
   }
 
-  String page_() {
-    // Images are served by dedicated routes; keep this HTML response compact.
-    String s;
-    s.reserve(19000);
+  void send_page_() {
+    // The complete HTML is >68 KB. Constructing it as one Arduino String
+    // risks contiguous-heap allocation failure after ~32 KB, causing the
+    // browser to receive only the first half of the configuration page.
+    // Stream 1024-byte chunks instead. All form fields and JS are unchanged.
+    struct ChunkWriter {
+      WebServer &http;
+      String buffer;
+      bool failed{false};
+      explicit ChunkWriter(WebServer &server) : http(server) {
+        failed = !buffer.reserve(1024U);
+      }
+      void flush() {
+        if (buffer.length() == 0U) return;
+        http.sendContent(buffer);
+        buffer = "";
+      }
+      void append(const char *data, size_t length) {
+        if (!data || failed) return;
+        while (length > 0U) {
+          const size_t space = 1024U - buffer.length();
+          if (!space) { flush(); continue; }
+          const size_t amount = length < space ? length : space;
+          if (!buffer.concat(data, static_cast<unsigned int>(amount))) {
+            failed = true;
+            ESP_LOGE("modbus_gateway", "HTML chunk allocation failed");
+            return;
+          }
+          data += amount;
+          length -= amount;
+          if (buffer.length() == 1024U) flush();
+        }
+      }
+      ChunkWriter &operator+=(const char *data) {
+        if (data) append(data, strlen(data));
+        return *this;
+      }
+      ChunkWriter &operator+=(const String &data) {
+        append(data.c_str(), data.length());
+        return *this;
+      }
+    };
+
+    // HTTP chunked response. The response ends only after the final HTML
+    // segment. Never allocate one giant String for the entire dashboard.
+    web_.sendHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    web_.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    web_.send(200, "text/html; charset=utf-8", "");
+    ChunkWriter s(web_);
     s += R"HTML(<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Modbus Gateway</title>
 <style>
 *{box-sizing:border-box}html{background:#eef3f8}body{font:15px/1.5 Arial,Helvetica,sans-serif;background:#eef3f8;color:#17202a;margin:0;padding:24px 16px}main{max-width:920px;margin:0 auto}.brand{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;margin:0 auto 22px;padding:18px;background:#fff;border-radius:16px;box-shadow:0 3px 14px #0f172a12}.brand-logo{display:block;width:100%;max-width:920px;height:auto;max-height:none;object-fit:contain;margin:0 auto}.brand-version{font-size:12px;font-weight:600;letter-spacing:.35px;color:#64748b;margin-top:-3px}.brand-title{font-size:25px;font-weight:700;letter-spacing:.2px;color:#12345a}.brand-sub{font-size:13px;color:#64748b;margin-top:2px}section{display:block;background:#fff;border:1px solid #e1e8f0;border-radius:14px;padding:20px;margin:16px 0;box-shadow:0 3px 12px rgba(15,23,42,.05)}h2{display:flex;align-items:center;gap:10px;font-size:19px;line-height:1.25;margin:0 0 18px;color:#12345a}.section-icon{display:block;width:54px;height:42px;flex:0 0 54px;object-fit:contain;vertical-align:middle;margin:0;border-radius:6px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px}.tcp-layout{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 18px;align-items:start}.tcp-col{display:flex;flex-direction:column;gap:12px;min-width:0}.tcp-col>div{min-width:0}.tcp-note{grid-column:1/-1}label{display:block;font-size:13px;font-weight:600;color:#475569;margin:0 0 6px}input,select{display:block;width:100%;min-height:40px;box-sizing:border-box;padding:9px 11px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#17202a;font-size:15px}input:focus,select:focus{outline:2px solid #93c5fd;border-color:#2563eb}button{background:#1769aa;color:#fff;border:0;border-radius:8px;padding:11px 18px;font-size:14px;font-weight:600;cursor:pointer}button:hover{background:#125487}.muted{color:#64748b;font-size:13px}pre{white-space:pre-wrap;word-break:break-word;background:#101827;color:#dbeafe;padding:14px;border-radius:9px;max-height:360px;overflow:auto}.crc-byte{display:inline-block;border:2px solid #fbbf24;border-radius:50%;padding:1px 4px;margin:0 1px;color:#fde68a;font-weight:bold}.crc-ok{color:#86efac;font-weight:bold}.crc-bad{color:#fca5a5;font-weight:bold}#langBtn{float:right;margin:0 0 10px 10px}.check-label{display:flex;align-items:center;gap:9px;font-weight:600}.check-label input{width:18px;min-height:18px;margin:0}.reboot-panel{display:flex;align-items:center;justify-content:space-between;gap:18px;background:#fff;border:1px solid #e1e8f0;border-radius:14px;padding:14px 20px;margin:12px 0 16px}.reboot-panel button{background:#64748b}.reboot-panel button:hover{background:#475569}.apply-panel{display:flex;align-items:center;justify-content:space-between;gap:18px;background:#fff;border:1px solid #cbdbea;border-radius:14px;padding:16px 20px;margin:16px 0;box-shadow:0 3px 12px rgba(15,23,42,.05)}.apply-panel strong{display:block;color:#12345a;font-size:15px}.apply-panel .muted{margin-top:3px}.button-link{display:inline-block;background:#1769aa;color:#fff;border:0;border-radius:8px;padding:11px 18px;font-size:14px;font-weight:600;text-decoration:none;white-space:nowrap}.button-link:hover{background:#125487}@media(max-width:560px){.reboot-panel{align-items:stretch;flex-direction:column;gap:10px}.reboot-panel button{width:100%}.apply-panel{align-items:stretch;flex-direction:column;gap:10px}.apply-panel button,.apply-panel .button-link{width:100%;text-align:center}}#cfg{margin:0}@media(max-width:560px){body{padding:12px 9px}section{padding:14px}.brand{padding:12px}.brand-logo{width:100%;max-width:100%;max-height:none}.brand-title{font-size:20px}h2{font-size:17px}.section-icon{width:46px;height:36px;flex-basis:46px}.grid,.tcp-layout{grid-template-columns:1fr}.tcp-note{grid-column:auto}}
@@ -2790,7 +2835,12 @@ async function toggleListen(){try{await fetch('/listen',{method:'POST'});await u
 async function sendManual(){let frame=document.getElementById('rtuFrame').value;let out=document.getElementById('manualResponse');out.textContent=tr('Envoi en cours…','Sending…');try{let r=await fetch('/manual',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'frame='+encodeURIComponent(frame)});const responseText=await r.text();out.textContent=translateValue(responseText);refresh();}catch(e){out.textContent=tr('Erreur de communication avec la passerelle','Gateway communication error');}}
 updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();refreshConnections();},1500);
 </script><div class="bottom-actions" role="group" aria-label="Actions de la passerelle"><div class="action-display"><button type="button" id="themeBtn" onclick="toggleTheme()" aria-label="Mode sombre" title="Mode sombre">☾</button><button type="button" id="langBtn" onclick="toggleLanguage()" aria-label="English" title="English">EN</button></div><button type="submit" form="cfg" class="bottom-save" data-fr="Enregistrer / appliquer" data-en="Save / apply">Enregistrer / appliquer</button><button type="submit" form="rebootForm" class="bottom-reboot" data-fr="Redémarrer" data-en="Restart">Redémarrer</button><button type="button" class="bottom-refresh" onclick="refresh();refreshConnections();updateListenState();" data-fr="Actualiser" data-en="Refresh">Actualiser</button></div></main></body></html>)HTML";
-    return s;
+    s.flush();
+    web_.sendContent(""); // Terminating chunk.
+    web_.setContentLength(CONTENT_LENGTH_NOT_SET);
+    if (s.failed) {
+      ESP_LOGE("modbus_gateway", "The HTML page was incompletely transmitted");
+    }
   }
 
   String connections_json_() {
