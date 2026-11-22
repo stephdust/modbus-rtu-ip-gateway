@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — Millisecond wall-clock frame timestamps (2026-11-22)
+
+- Replace boot-relative millisecond timestamps with local `YYYY-MM-DD HH:mm:ss.SSS` timestamps in the live Web frame monitor and `/frames.txt` export, for RTU/IP traffic and diagnostics.
+- Configure asynchronous NTP synchronization and the Europe/Paris timezone (automatic DST transitions); do not block Modbus traffic while synchronizing.
+- Before valid NTP time is available, label entries with uptime milliseconds instead of fabricating wall-clock time; timestamps are captured at log creation and not backfilled.
+- Preserve the existing bounded capture (256 exported entries, 64 visible in the Web view).
+- The maintainer reports the timestamp change working on the gateway; no new independent endurance or full protocol regression tests were performed.
+
+
 ## 1.3.13 — Fair background cache refresh scheduling (2026-11-22)
 
 - Select the most overdue recently requested cached read when the TCP client becomes idle, instead of selecting only the RTU request that happens to trigger a refresh.
