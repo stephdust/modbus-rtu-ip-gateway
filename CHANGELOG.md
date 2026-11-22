@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.13 — Fair background cache refresh scheduling (2026-11-22)
+
+- Select the most overdue recently requested cached read when the TCP client becomes idle, instead of selecting only the RTU request that happens to trigger a refresh.
+- Preserve one TCP transaction at a time, RTU cache-first replies, foreground miss priority and the 250 ms minimum refresh interval.
+- Log selected Unit ID, address, quantity and time overdue for comparison across register groups.
+- Requires ESPHome compilation and hardware validation; target cache age is not guaranteed by network response times.
+
 ## 1.3.12 — Faster bounded SWR refresh and runtime diagnostics (2026-11-22)
 
 - Reduce the global SWR refresh start interval from 1000 ms to 250 ms; retain a single in-flight TCP transaction.
