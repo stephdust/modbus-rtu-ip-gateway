@@ -115,3 +115,27 @@ The gateway intentionally drops RTU frames with an invalid CRC. In TCP Client mo
 - **Cache TTL field missing:** first enable the cache checkbox for the currently selected Client or Server direction. The TTL is intentionally hidden when that direction's cache is disabled.
 
 See [TCP/UDP transport details](TCP_UDP_DEVELOPMENT.md) for limitations and validation status.
+
+
+## Field diagnosis: intermittent Flow.io TCP availability (22 November 2026)
+
+The following observations concern **the ESPHome gateway in TCP Client mode** (RTU master → gateway at `192.168.1.72` → Flow.io Modbus TCP server at `192.168.1.71:502`). The addresses are examples from the maintainer's LAN, **not defaults to copy**. Captures were taken during a period when Flow.io firmware OTA testing and Modbus polling were both occurring. They do not establish that OTA itself caused the failures.
+
+**What the frame export shows:**
+
+- Requests continued to arrive on RS-485, repeatedly polling FC03 holding-register ranges `52/97`, `500/28` and `1000/3` (start address / register count).
+- `TCP CONNECT` followed by `TCP ERROR ... connect() returned false` means that the gateway attempted to open a connection but did not establish a TCP session. In these cases `TCP write=0 us`: the Modbus request never reached the IP application through that attempt. Do not diagnose these events as a serial CRC failure.
+- With stale-while-revalidate enabled, `CACHE STALE` and `RTU TX` can coexist while background refresh attempts report `CACHE REFRESH ERROR`. A cached response is **not proof that the TCP server is currently reachable**. Watch the `Age=... ms` field and the configured maximum data age.
+- If no suitable cached data exists, `CACHE MISS` followed by `ERROR SILENT` means the failed IP transaction produced no RTU response under the selected error policy.
+- `RTU EXPIRED` / `RTU DEADLINE` can appear even after a later `TCP RX`: a Modbus response may have been received but suppressed because the RTU master has already started another request. For example, a captured TCP transaction took approximately **573 ms**; the log recorded `pending master bytes=yes` and suppressed the late RTU reply.
+
+**Recommended diagnostic sequence:**
+
+1. Check that the Flow.io Modbus TCP listener is enabled and accepting connections on the expected port. Compare its server-side `clients`, `req`, `reply`, `rxerr` and `txerr` counters against the gateway's `TCP CONNECT` / `TCP ERROR` timestamps.
+2. Confirm IP routing, link/Wi-Fi status, port and listener reachability before changing RS-485 settings. A ready Wi-Fi station does not guarantee the remote TCP listener accepts a connection.
+3. Distinguish **connection failures** (`connect() returned false`) from **slow established transactions** (`TCP TX` followed by delayed `TCP RX`). Different fixes apply.
+4. For stale responses, compare the cache TTL, maximum permitted data age, refresh failures and `/cache-stats` counters. If current data is mandatory, disable stale serving.
+5. For late replies, compare `CLIENT total`, `TCP response wait`, the configured RTU reply deadline and the master's polling interval. Do not increase the deadline without verifying that the master will still accept the response.
+6. Export synchronized gateway frame captures and Flow.io runtime/boot logs around the **same time interval** before concluding where a failure originates. Logs captured in different wall-clock zones or before NTP sync need explicit alignment.
+
+**Scope of validation:** On 22 November, two Flow.io paired OTA operations were recorded as successfully written and SHA-256 verified. That validates those **Flow.io OTA operations**, not uninterrupted Modbus service, not the gateway's own OTA mechanism and not a proven cause of the TCP connection failures. No gateway firmware modification is implied by this troubleshooting note.
