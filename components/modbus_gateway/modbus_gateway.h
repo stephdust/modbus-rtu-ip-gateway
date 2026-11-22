@@ -64,7 +64,6 @@ class ModbusGateway : public Component {
     web_.on("/img/esp32.jpg", HTTP_GET, [this]() { this->serve_image_(ESP32_IMG, "image/jpeg"); });
     web_.on("/img/frame-diagnostics.jpg", HTTP_GET, [this]() { this->serve_image_(FRAME_IMG, "image/jpeg"); });
     web_.on("/save", HTTP_POST, [this]() { this->save_config_(); });
-    web_.on("/save-rtu-window", HTTP_POST, [this]() { this->save_rtu_window_(); });
     web_.on("/reboot", HTTP_POST, [this]() { this->reboot_gateway_(); });
     web_.on("/frames", HTTP_GET, [this]() { web_.send(200, "application/json", this->frames_json_()); });
     web_.on("/cache-stats", HTTP_GET, [this]() { web_.sendHeader("Cache-Control", "no-store"); web_.send(200, "application/json", this->cache_stats_json_()); });
@@ -2384,7 +2383,7 @@ main>.bottom-actions>button{height:44px!important;min-height:44px!important;max-
     s += String(cache_swr_max_age_ms_);
     s += R"HTML("><label>Fenêtre maximale de réponse RTU (ms)</label><input name="rtu_window" type="number" form="cfg" min="250" max="2000" step="50" value=")HTML";
     s += String(rtu_reply_window_ms_);
-    s += R"HTML("><button type="button" id="saveRtuWindow" onclick="saveRtuWindowOnly()" style="margin-top:8px">Enregistrer cette fenêtre uniquement</button><span id="rtuWindowSaveStatus" style="margin-left:8px"></span></div><p class="muted">Mode client TCP uniquement. Une réponse correcte en cache peut être servie jusqu’à l’âge maximal ; une lecture périmée déclenche un rafraîchissement TCP sans seconde réponse RTU. Au-delà de l’âge maximal, la passerelle ne réutilise plus ces données. Les réponses RTU en retard sont supprimées ; les erreurs ne sont jamais mises en cache. Utiliser une limite d’âge compatible avec les exigences de sécurité des données.</p></div></div>
+    s += R"HTML("></div><p class="muted">Mode client TCP uniquement. Une réponse correcte en cache peut être servie jusqu’à l’âge maximal ; une lecture périmée déclenche un rafraîchissement TCP sans seconde réponse RTU. Au-delà de l’âge maximal, la passerelle ne réutilise plus ces données. Les réponses RTU en retard sont supprimées ; les erreurs ne sont jamais mises en cache. Utiliser une limite d’âge compatible avec les exigences de sécurité des données.</p></div></div>
 <div class="muted tcp-note">Le cache concerne uniquement les lectures Modbus (fonctions 01 à 04). L’option affichée correspond au mode Client/Serveur sélectionné ; le réglage de l’autre mode est conservé. Les écritures réussies invalident les réponses mémorisées pour l’Unit ID concerné. 64 entrées maximum.</div>
 </div></section>
 <section><h2><span class="section-badge section-badge-rtu" aria-hidden="true"><img src="/img/modbus-rtu.jpg" alt=""><small>RTU</small></span>Paramètres Modbus RTU</h2><div class="grid">
@@ -2437,23 +2436,6 @@ main>.bottom-actions>button{height:44px!important;min-height:44px!important;max-
 <pre id="frames">Chargement des trames…</pre></div></section>
 <script>
 let currentLanguage='fr';
-async function saveRtuWindowOnly(){
- const field=document.querySelector('input[name="rtu_window"]');
- const button=document.getElementById('saveRtuWindow');
- const status=document.getElementById('rtuWindowSaveStatus');
- const value=Number(field.value);
- const en=currentLanguage==='en';
- if(!Number.isInteger(value)||value<250||value>2000||value%50!==0){
-   status.textContent=en?'Enter 250–2000 ms in steps of 50.':'Saisir 250 à 2000 ms par pas de 50.';return;
- }
- button.disabled=true;status.textContent=en?'Saving…':'Enregistrement…';
- try{
-   const response=await fetch('/save-rtu-window',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'rtu_window='+encodeURIComponent(value)});
-   if(!response.ok)throw new Error(await response.text());
-   status.textContent=en?'Saved; applies to next transaction.':'Enregistré ; appliqué à la prochaine transaction.';
- }catch(error){status.textContent=(en?'Save failed: ':'Échec : ')+error.message;}
- finally{button.disabled=false;}
-}
 
 const translations={
 'Gestion du TTL':'TTL management','TTL fixe':'Fixed TTL','TTL adaptatif':'Adaptive TTL',
@@ -2858,28 +2840,6 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
 
   // This setting is independent of the active TCP/RTU transaction.
   // Save it without resetting the socket, UART or response cache.
-  void save_rtu_window_() {
-    if (!web_.hasArg("rtu_window")) {
-      web_.send(400, "text/plain; charset=utf-8", "Valeur manquante.");
-      return;
-    }
-    const String raw = web_.arg("rtu_window");
-    const int window = raw.toInt();
-    if (window < 250 || window > 2000 || window % 50 != 0 ||
-        String(window) != raw) {
-      web_.send(400, "text/plain; charset=utf-8", "Valeur invalide (250-2000 ms, pas de 50).");
-      return;
-    }
-    if (window != int(rtu_reply_window_ms_)) {
-      if (prefs_.putUInt("rtuwindow", uint32_t(window)) != sizeof(uint32_t)) {
-        web_.send(500, "text/plain; charset=utf-8", "Echec de l'enregistrement.");
-        return;
-      }
-      rtu_reply_window_ms_ = uint32_t(window);
-    }
-    web_.send(200, "text/plain; charset=utf-8", "OK");
-  }
-
   void save_config_() {
     // A busy TCP transaction must not block cache-only Web configuration.
     // Reject all transport, serial, identity and timeout changes while busy.
