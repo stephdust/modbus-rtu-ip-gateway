@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.10 — Larger bounded Modbus capture (2026-11-22)
+
+- Increase the rolling RTU/TCP diagnostic history from 64 to 256 entries.
+- Stream the complete text capture in bounded chunks to avoid constructing a large export String in RAM.
+- Keep the live Web JSON view at the latest 64 entries to limit HTTP memory pressure.
+- Update the FR/EN export description.
+
 ## 1.3.9 — RTU response window save during live traffic (2026-11-22)
 
 - Add a dedicated save action for the maximum RTU response window (250–2000 ms, 50 ms steps), independent of ongoing Modbus transactions.
