@@ -114,6 +114,8 @@ class ModbusGateway : public Component {
           add_event_("RTU ERROR", "Pending RTU input buffer overflow; buffered bytes discarded.");
         }
         parse_rtu_();
+        // Schedule cache refresh after foreground RTU processing, never before it.
+        schedule_client_cache_refresh_();
       } else {
         // Keep the UART buffer drained while the RTU listener is paused.
         while (Serial1.available()) Serial1.read();
@@ -978,21 +980,6 @@ class ModbusGateway : public Component {
                      "; age=" + String(cache_age_ms) +
                      " ms; RTU response TX=" + String(rtu_tx_us) + " us; total=" +
                      String(micros() - end_to_end_started_us) + " us.");
-          // Refresh only stale validated reads, at most one in flight. Cache
-          // remains usable for every other RTU request during the refresh.
-          if (is_stale && swr_client_mode_() &&
-              client_txn_.state == ClientTxnState::IDLE &&
-              (last_background_refresh_ms_ == 0U ||
-               uint32_t(millis() - last_background_refresh_ms_) >= kBackgroundRefreshMinIntervalMs)) {
-            last_background_refresh_ms_ = millis();
-            background_refresh_started_ms_ = last_background_refresh_ms_;
-            ++background_refresh_started_;
-            add_event_("CACHE REFRESH", String("Background TCP refresh; Unit ID=") +
-                       String(unit_id) + "; Function=" + String(pdu[0]) +
-                       "; Address=" + String(cache_start) + "; Quantity=" +
-                       String(cache_quantity) + ".");
-            start_client_transaction_(unit_id, pdu, micros(), true, false, true);
-          }
           continue;
         }
         add_event_("CACHE MISS", String("Client mode | Unit ID=") + String(unit_id) +
@@ -1014,6 +1001,52 @@ class ModbusGateway : public Component {
       start_client_transaction_(unit_id, pdu, end_to_end_started_us, cacheable_read);
       return;
     }
+  }
+
+  // Select the most overdue *recently requested* cached read, rather than
+  // refreshing whichever stale RTU request happens to arrive while TCP is idle.
+  // The score is age - TTL (milliseconds overdue); this naturally prevents
+  // starvation of a slower-polled register group. No new heap allocation is
+  // required to inspect the cache.
+  void schedule_client_cache_refresh_() {
+    if (!rtu_listening_ || !swr_client_mode_() ||
+        client_txn_.state != ClientTxnState::IDLE || !rx_.empty()) return;
+    const uint32_t now = millis();
+    if (last_background_refresh_ms_ != 0U &&
+        uint32_t(now - last_background_refresh_ms_) < kBackgroundRefreshMinIntervalMs) return;
+    ResponseCacheEntry *candidate = nullptr;
+    uint32_t worst_overdue_ms = 0U;
+    for (auto &entry : response_cache_) {
+      if (!entry.valid || entry.direction != CACHE_DIRECTION_CLIENT) continue;
+      const uint32_t age_ms = uint32_t(now - entry.stored_at_ms);
+      const uint32_t ttl_ms = cache_ttl_adaptive_ ? entry.ttl_ms : cache_ttl_ms_;
+      // Never prefetch an inactive historical key or an entry that can no
+      // longer serve SWR; foreground reads will repopulate those on demand.
+      if (uint32_t(now - entry.last_request_ms) > cache_swr_max_age_ms_ ||
+          age_ms >= cache_swr_max_age_ms_ || age_ms <= ttl_ms) continue;
+      const uint32_t overdue_ms = age_ms - ttl_ms;
+      if (!candidate || overdue_ms > worst_overdue_ms) {
+        candidate = &entry;
+        worst_overdue_ms = overdue_ms;
+      }
+    }
+    if (!candidate) return;
+    std::vector<uint8_t> request_pdu(5);
+    request_pdu[0] = candidate->function_code;
+    request_pdu[1] = uint8_t(candidate->start_address >> 8);
+    request_pdu[2] = uint8_t(candidate->start_address);
+    request_pdu[3] = uint8_t(candidate->quantity >> 8);
+    request_pdu[4] = uint8_t(candidate->quantity);
+    const uint8_t unit_id = candidate->unit_id;
+    last_background_refresh_ms_ = now;
+    background_refresh_started_ms_ = now;
+    ++background_refresh_started_;
+    add_event_("CACHE REFRESH", String("Scheduled oldest-overdue TCP refresh; Unit ID=") +
+               String(unit_id) + "; Function=" + String(request_pdu[0]) +
+               "; Address=" + String(candidate->start_address) +
+               "; Quantity=" + String(candidate->quantity) +
+               "; overdue=" + String(worst_overdue_ms) + " ms.");
+    start_client_transaction_(unit_id, request_pdu, micros(), true, false, true);
   }
 
   void reset_client_transaction_() {
