@@ -2881,9 +2881,64 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
   }
 
   void save_config_() {
-    // Do not switch the destination or transport halfway through a Modbus reply.
+    // A busy TCP transaction must not block cache-only Web configuration.
+    // Reject all transport, serial, identity and timeout changes while busy.
     if (client_txn_.state != ClientTxnState::IDLE) {
-      web_.send(409, "text/plain; charset=utf-8", "Transaction Modbus en cours; recommencez l'enregistrement.");
+      const bool safe =
+          (!web_.hasArg("host") || std::string(web_.arg("host").substring(0,63).c_str()) == cfg_host_) &&
+          (!web_.hasArg("port") || web_.arg("port").toInt() == cfg_port_) &&
+          (!web_.hasArg("mode") || std::string(web_.arg("mode").c_str()) == tcp_mode_) &&
+          (!web_.hasArg("transport") || std::string(web_.arg("transport").c_str()) == transport_) &&
+          (!web_.hasArg("timeout") || web_.arg("timeout").toInt() * 1000 == int(tcp_timeout_ms_)) &&
+          (!web_.hasArg("timeout_behavior") || (web_.arg("timeout_behavior") == "silent") == silent_on_timeout_) &&
+          (!web_.hasArg("baud") || web_.arg("baud").toInt() == int(cfg_baud_)) &&
+          (!web_.hasArg("dbits") || web_.arg("dbits").toInt() == cfg_data_bits_) &&
+          (!web_.hasArg("parity") || std::string(web_.arg("parity").c_str()) == cfg_parity_) &&
+          (!web_.hasArg("sbits") || web_.arg("sbits").toInt() == cfg_stop_bits_) &&
+          (!web_.hasArg("tx") || web_.arg("tx").toInt() == tx_gpio_) &&
+          (!web_.hasArg("rx") || web_.arg("rx").toInt() == rx_gpio_) &&
+          (!web_.hasArg("de") || web_.arg("de").toInt() == de_re_gpio_) &&
+          (!web_.hasArg("idmode") || (web_.arg("idmode") == "manual") == manual_rtu_id_) &&
+          (!web_.hasArg("rtuid") || web_.arg("rtuid").toInt() == configured_rtu_id_) &&
+          (!web_.hasArg("persistent") || (web_.arg("persistent") == "1") == tcp_persistent_);
+      if (!safe) {
+        web_.send(409, "text/plain; charset=utf-8",
+                  "Modification réseau ou série pendant une transaction Modbus; réessayez.");
+        return;
+      }
+      // Cache settings are independent of the in-flight TCP request. Do not
+      // clear cached entries or restart UART, server, or persistent socket.
+      if (tcp_mode_ == "CLIENT") {
+        cache_client_enabled_ = web_.hasArg("cache_client") && web_.arg("cache_client") == "1";
+        cache_swr_enabled_ = web_.hasArg("cache_swr") && web_.arg("cache_swr") == "1" &&
+                             cache_client_enabled_ && tcp_persistent_ && transport_ == "TCP";
+      } else if (tcp_mode_ == "SERVER") {
+        cache_server_enabled_ = web_.hasArg("cache_server") && web_.arg("cache_server") == "1";
+      }
+      if (web_.hasArg("cache_ttl_mode"))
+        cache_ttl_adaptive_ = web_.arg("cache_ttl_mode") == "adaptive";
+      if (web_.hasArg("cache_ttl")) {
+        const int v = web_.arg("cache_ttl").toInt();
+        if (v >= 50 && v <= 10000) cache_ttl_ms_ = uint32_t(v);
+      }
+      if (web_.hasArg("cache_swr_max")) {
+        const int v = web_.arg("cache_swr_max").toInt();
+        if (v >= 1000 && v <= 30000) cache_swr_max_age_ms_ = uint32_t(v);
+      }
+      if (web_.hasArg("rtu_window")) {
+        const int v = web_.arg("rtu_window").toInt();
+        if (v >= 250 && v <= 2000) rtu_reply_window_ms_ = uint32_t(v);
+      }
+      if (cache_swr_max_age_ms_ < cache_ttl_ms_) cache_swr_max_age_ms_ = cache_ttl_ms_;
+      prefs_.putBool("cachecli", cache_client_enabled_);
+      prefs_.putBool("cachesrv", cache_server_enabled_);
+      prefs_.putBool("cacheswr", cache_swr_enabled_);
+      prefs_.putBool("cacheauto", cache_ttl_adaptive_);
+      prefs_.putUInt("cachettl", cache_ttl_ms_);
+      prefs_.putUInt("swrmaxage", cache_swr_max_age_ms_);
+      prefs_.putUInt("rtuwindow", rtu_reply_window_ms_);
+      web_.sendHeader("Location", "/");
+      web_.send(303, "text/plain", "Paramètres du cache enregistrés");
       return;
     }
     const std::string previous_host = cfg_host_;
