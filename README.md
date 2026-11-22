@@ -22,6 +22,14 @@ A Wi-Fi Modbus gateway built with **ESPHome**, **ESP32-S3** and the **Arduino fr
 
 The source interface labels the network section **Modbus IP**, offers a TCP/UDP selector, and includes four harmonized blue/cyan section thumbnails matching the RTU ↔ IP header artwork. The IP thumbnail explicitly shows **TCP / UDP**. The **Persistent TCP connection** control is displayed only for **TCP Client**; it is hidden for TCP Server and both UDP modes, and the stored TCP setting is preserved while UDP is selected.
 
+## Horodatage des trames / Frame timestamps (22 novembre 2026)
+
+L'interface Web **Écoute et capture des trames RTU / IP** et l'export **modbus-frame-capture.txt** utilisent le même horodatage local, à la milliseconde : `AAAA-MM-JJ HH:mm:ss.SSS` (par exemple `2026-11-22 17:17:40.297`). Il s'applique aux trames RTU/IP RX/TX et aux événements de diagnostic. L'ESP32-S3 synchronise son horloge par NTP (`pool.ntp.org`, puis `time.google.com`) et utilise le fuseau **Europe/Paris** avec passage automatique heure d'été / heure d'hiver. La synchronisation est asynchrone et ne bloque pas les transactions Modbus.
+
+**Avant la synchronisation NTP**, les nouvelles entrées portent un temps relatif, par exemple `12345 ms (uptime; NTP pending)`, afin de ne pas présenter une fausse date. Les horodatages sont enregistrés à la création de chaque entrée : une synchronisation NTP ultérieure ne convertit pas rétroactivement les anciennes entrées. Le journal conserve **256 entrées** pour l'export TXT, tandis que l'interface Web affiche les **64 plus récentes**.
+
+**English:** The live RTU/IP frame monitor and TXT export show identical millisecond-precision Europe/Paris timestamps (`YYYY-MM-DD HH:mm:ss.SSS`) after asynchronous NTP synchronization. Before synchronization, entries retain a clearly labeled uptime timestamp. Existing entries are not retroactively changed.
+
 ## Persistent TCP Client reconnect (v1.3.8)
 
 When **TCP Client + Persistent TCP connection** is enabled, the connection is checked independently of incoming RTU requests or the Web statistics page. Disconnected sockets are retried automatically using a bounded backoff, and TCP keepalive helps detect stale connections. The Web endpoint `/connections` exposes reconnect and keepalive counters. The supervisor never generates a synthetic Modbus request and never retries writes. For details and diagnostic instructions, see [TCP idle reconnect](docs/TCP_IDLE_RECONNECT.md).
@@ -89,7 +97,7 @@ and dropped late RTU responses. Full details in [Cache behavior](docs/CACHE.md).
 - **RTU address / Unit ID handling** is explicit and configurable (see [Protocol behaviour](docs/PROTOCOL.md)).
 - Web interface in **French and English**.
 - Settings are saved persistently in ESP32 NVS (Arduino `Preferences`). GPIO changes trigger an automatic restart so the UART can be reinitialized.
-- Frame diagnostics: live RTU/TCP frame log, RTU CRC status, manual RTU-frame test and text export of the latest 64 log entries, including timing diagnostics.
+- Frame diagnostics: live RTU/TCP frame log, RTU CRC status, manual RTU-frame test and text export of the latest 256 log entries (the Web view shows the latest 64), including timing diagnostics.
 - **RTU CRC protection:** invalid RTU requests/responses are rejected before forwarding or caching; CRC failures are recorded in the diagnostics log. TCP Server mode returns gateway exception `0x0B` for an invalid downstream RTU response.
 - **Selectable error policy:** one bilingual Web UI setting applies to Client and Server (TCP/UDP). `Standard` (default) returns a Modbus exception for communication/protocol errors; `Silent` sends no Modbus response for any error, including a received slave exception. RTU frames with incorrect CRC are never forwarded or cached; in Standard mode only a newly generated gateway exception may be sent. The setting survives restart.
 - **Mode-aware cache controls:** Section 1 shows only the cache switch for the selected TCP mode. The inactive mode's enable setting is preserved when saving or switching modes.
