@@ -4,6 +4,8 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
+#include <esp_netif.h>
+#include <esp_wifi.h>
 #include "mbap_codec.h"
 #include "modbus_gateway_policy.h"
 #include "tcp_connection_policy.h"
@@ -153,6 +155,18 @@ class ModbusGateway : public Component {
   float get_setup_priority() const override { return setup_priority::AFTER_WIFI; }
 
  protected:
+  // ESPHome status is diagnostic; only the ESP-IDF STA association and
+  // assigned IPv4 allow connections to the remote Modbus server.
+  struct StationLinkState {
+    bool esphome_connected{false};
+    bool associated{false};
+    bool has_ipv4{false};
+    esp_netif_ip_info_t ipv4_info{};
+    bool ready() const {
+      return tcp_connection_policy::station_link_ready(associated, has_ipv4);
+    }
+  };
+
   std::string cfg_host_{"192.168.1.100"};
   std::string version_{"unknown"};  // Loaded from components/modbus_gateway/manifest.json
   std::string tcp_mode_{"CLIENT"};
@@ -209,6 +223,11 @@ class ModbusGateway : public Component {
   uint32_t tcp_reconnect_failures_{0};
   uint32_t tcp_idle_disconnects_{0};
   uint32_t tcp_keepalive_setup_failures_{0};
+  uint32_t tcp_status_mismatches_{0};  // Edge-counted state disagreements.
+  uint32_t tcp_offline_connect_skips_{0};
+  uint32_t tcp_station_link_losses_{0};
+  uint32_t tcp_last_mismatch_report_ms_{0};
+  bool tcp_mismatch_active_{false};
   bool tcp_link_was_up_{false};
   bool tcp_keepalive_configured_{false};
   // The ESP32 Arduino NetworkServer supports a configurable client limit.
@@ -385,6 +404,52 @@ class ModbusGateway : public Component {
     }
   }
 
+  StationLinkState station_link_state_() const {
+    StationLinkState state{};
+    state.esphome_connected = wifi::global_wifi_component != nullptr &&
+                              wifi::global_wifi_component->is_connected();
+    // The ESPHome fallback AP does not prove that the station is attached
+    // to the LAN. Read the ESP-IDF station driver and its own IP interface.
+    wifi_ap_record_t ap_info{};
+    state.associated = esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK;
+    esp_netif_t *station = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    if (station != nullptr &&
+        esp_netif_get_ip_info(station, &state.ipv4_info) == ESP_OK) {
+      state.has_ipv4 = state.ipv4_info.ip.addr != 0U;
+    }
+    return state;
+  }
+
+  static String station_ip_text_(const StationLinkState &state) {
+    if (!state.ready()) return String("unavailable");
+    char address[16]{};
+    snprintf(address, sizeof(address), IPSTR, IP2STR(&state.ipv4_info.ip));
+    return String(address);
+  }
+
+  // Debounced, rate-limited observation: even if RTU requests arrive every
+  // 500 ms (and keep the idle supervisor from running), capture the mismatch
+  // exactly once per state edge. Web diagnostics remain available anytime.
+  void observe_station_mismatch_(const StationLinkState &station) {
+    const bool mismatch = tcp_connection_policy::status_disagrees(
+        station.esphome_connected, station.associated, station.has_ipv4);
+    if (mismatch && !tcp_mismatch_active_) {
+      ++tcp_status_mismatches_;
+      const uint32_t now = millis();
+      if (tcp_last_mismatch_report_ms_ == 0U ||
+          uint32_t(now - tcp_last_mismatch_report_ms_) >= 30000U) {
+        tcp_last_mismatch_report_ms_ = now ? now : 1U;
+        add_event_("NET STATE", String("ESPHome=") +
+                   (station.esphome_connected ? "up" : "down") +
+                   "; STA=" + (station.associated ? "associated" : "offline") +
+                   "; IPv4=" + station_ip_text_(station) +
+                   "; TCP=" + (client_.connected() ? "connected" : "disconnected") +
+                   "; disagreement=" + String(tcp_status_mismatches_) + ".");
+      }
+    }
+    tcp_mismatch_active_ = mismatch;
+  }
+
   void maintain_persistent_tcp_client_() {
     using namespace tcp_connection_policy;
     if (!maintenance_allowed(tcp_mode_ == "CLIENT", transport_ == "TCP",
@@ -394,14 +459,15 @@ class ModbusGateway : public Component {
     if (uint32_t(now - tcp_last_health_check_ms_) < kPollIntervalMs) return;
     tcp_last_health_check_ms_ = now;
 
-    // Wi-Fi association is tracked by ESPHome. A stale TCP descriptor must
-    // never survive a disconnected/reassociated station.
-    const bool wifi_ready = wifi::global_wifi_component != nullptr &&
-                            wifi::global_wifi_component->is_connected();
-    if (!wifi_ready) {
+    // The software flag can briefly disagree with the underlying driver.
+    // Never close a live TCP socket solely on ESPHome's is_connected().
+    const StationLinkState station = station_link_state_();
+    observe_station_mismatch_(station);
+    if (!station.ready()) {
       if (tcp_link_was_up_) {
         ++tcp_idle_disconnects_;
-        add_event_("TCP DOWN", "Wi-Fi disconnected; persistent TCP socket closed.");
+        ++tcp_station_link_losses_;
+        add_event_("TCP DOWN", "STA association/IPv4 unavailable; persistent TCP socket closed.");
       }
       if (client_.fd() >= 0) client_.stop();
       tcp_link_was_up_ = false;
@@ -1112,9 +1178,9 @@ class ModbusGateway : public Component {
     }
     tcp_last_health_check_ms_ = millis();  // Avoid a second idle handshake in this loop.
     uint32_t connect_started_us = micros();
-    const String local_ip = local_wifi_ip_();
-    const bool wifi_connected = wifi::global_wifi_component != nullptr &&
-                                wifi::global_wifi_component->is_connected();
+    const StationLinkState station = station_link_state_();
+    observe_station_mismatch_(station);
+    const String local_ip = station_ip_text_(station);
     const String target = String(cfg_host_.c_str()) + ":" + String(cfg_port_);
     client_txn_.reused_connection = tcp_persistent_ && client_ && client_.connected();
     client_.setTimeout(tcp_timeout_ms_);
@@ -1122,15 +1188,30 @@ class ModbusGateway : public Component {
 
     if (client_txn_.reused_connection) {
       add_event_("TCP REUSE", String("Persistent connection reused to ") + target +
-                 "; Wi-Fi=" + (wifi_connected ? "connected" : "not connected") +
+                 "; ESPHome=" + (station.esphome_connected ? "up" : "down") +
+                 "; STA=" + (station.ready() ? "ready" : "unready") +
                  "; local IP=" + local_ip);
     } else {
       client_.stop();
-      add_event_("TCP CONNECT", String("Wi-Fi=") + (wifi_connected ? "connected" : "not connected") +
+      // No synchronous TCP connect attempts when only AP mode or when DHCP
+      // has not yet provided a routable STA address. Preserve RTU error mode.
+      if (!station.ready()) {
+        ++tcp_offline_connect_skips_;
+        if (tcp_offline_connect_skips_ == 1U ||
+            tcp_offline_connect_skips_ % 30U == 0U) {
+          add_event_("TCP OFFLINE", String("No STA association/IPv4; ESPHome=") +
+                     (station.esphome_connected ? "up" : "down") +
+                     "; connect skipped=" + String(tcp_offline_connect_skips_) + ".");
+        }
+        fail_client_transaction_("Wi-Fi station not ready; TCP connect skipped.");
+        return;
+      }
+      add_event_("TCP CONNECT", String("STA=ready; ESPHome=") +
+                 (station.esphome_connected ? "up" : "down") +
                  "; local IP=" + local_ip + "; opening connection to " + target);
-      ESP_LOGI("modbus_gateway", "TCP client: Wi-Fi=%s local IP=%s; connecting to %s:%u (persistent=%s)",
-               wifi_connected ? "connected" : "not connected", local_ip.c_str(), cfg_host_.c_str(),
-               unsigned(cfg_port_), tcp_persistent_ ? "yes" : "no");
+      ESP_LOGI("modbus_gateway", "TCP client: STA=ready ESPHome=%s local IP=%s; connecting to %s:%u (persistent=%s)",
+               station.esphome_connected ? "up" : "down", local_ip.c_str(),
+               cfg_host_.c_str(), unsigned(cfg_port_), tcp_persistent_ ? "yes" : "no");
       // A background cache refresh must not block the UART/Web task for
       // the full foreground network timeout after a Wi-Fi/TCP outage.
       if (!client_.connect(cfg_host_.c_str(), cfg_port_,
@@ -1411,26 +1492,7 @@ class ModbusGateway : public Component {
     return pos==len;
   }
 
-  String local_wifi_ip_() {
-    // ESPHome owns the Wi-Fi interface in this firmware. Its WiFiComponent
-    // keeps the authoritative DHCP/static address; Arduino WiFi.localIP()
-    // can report 0.0.0.0 when used alongside ESPHome's network manager.
-    if (wifi::global_wifi_component != nullptr) {
-      const auto addresses = wifi::global_wifi_component->get_ip_addresses();
-      for (const auto &address : addresses) {
-        if (address.is_set()) {
-          char buffer[network::IP_ADDRESS_BUFFER_SIZE] = {};
-          return String(address.str_to(buffer));
-        }
-      }
-    }
-
-    const IPAddress arduino_ip = WiFi.localIP();
-    if (arduino_ip != IPAddress(0, 0, 0, 0)) return arduino_ip.toString();
-    const IPAddress ap_ip = WiFi.softAPIP();
-    if (ap_ip != IPAddress(0, 0, 0, 0)) return ap_ip.toString();
-    return String("unavailable");
-  }
+  // Station address is reported with each transaction's actual link snapshot.
 
   bool transact_tcp_(uint8_t unit_id, const std::vector<uint8_t> &pdu, std::vector<uint8_t> &response) {
     const uint32_t transaction_started_us = micros();
@@ -1457,9 +1519,9 @@ class ModbusGateway : public Component {
     // Keep one TCP session open between RTU transactions when persistent mode
     // is enabled. This avoids a TCP handshake on every Modbus request.
     tcp_last_health_check_ms_ = millis();  // Manual request owns this socket for now.
-    const String local_ip = local_wifi_ip_();
-    const bool wifi_connected = wifi::global_wifi_component != nullptr &&
-                                wifi::global_wifi_component->is_connected();
+    const StationLinkState station = station_link_state_();
+    observe_station_mismatch_(station);
+    const String local_ip = station_ip_text_(station);
     const String target = String(cfg_host_.c_str()) + ":" + String(cfg_port_);
     const bool reuse_connection = tcp_persistent_ && client_ && client_.connected();
     reused_connection = reuse_connection;
@@ -1468,14 +1530,22 @@ class ModbusGateway : public Component {
     client_.setNoDelay(true);
     if (reuse_connection) {
       add_event_("TCP REUSE", String("Persistent connection reused to ") + target +
-                 "; Wi-Fi=" + (wifi_connected ? "connected" : "not connected") +
+                 "; ESPHome=" + (station.esphome_connected ? "up" : "down") +
+                 "; STA=" + (station.ready() ? "ready" : "unready") +
                  "; local IP=" + local_ip);
     } else {
       client_.stop();
-      add_event_("TCP CONNECT", String("Wi-Fi=") + (wifi_connected ? "connected" : "not connected") +
+      if (!station.ready()) {
+        ++tcp_offline_connect_skips_;
+        add_event_("TCP OFFLINE", "Manual test: STA association/IPv4 unavailable; no TCP handshake.");
+        return finish(false);
+      }
+      add_event_("TCP CONNECT", String("STA=ready; ESPHome=") +
+                 (station.esphome_connected ? "up" : "down") +
                  "; local IP=" + local_ip + "; opening connection to " + target);
-      ESP_LOGI("modbus_gateway", "TCP client: Wi-Fi=%s local IP=%s; connecting to %s:%u (persistent=%s)",
-               wifi_connected ? "connected" : "not connected", local_ip.c_str(), cfg_host_.c_str(), unsigned(cfg_port_), tcp_persistent_ ? "yes" : "no");
+      ESP_LOGI("modbus_gateway", "TCP client: STA=ready ESPHome=%s local IP=%s; connecting to %s:%u (persistent=%s)",
+               station.esphome_connected ? "up" : "down", local_ip.c_str(),
+               cfg_host_.c_str(), unsigned(cfg_port_), tcp_persistent_ ? "yes" : "no");
       const uint32_t connect_started_us = micros();
       if (!client_.connect(cfg_host_.c_str(), cfg_port_)) {
         connect_us = micros() - connect_started_us;
@@ -2759,7 +2829,22 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
     }
     const bool supervised = tcp_mode_ == "CLIENT" && transport_ == "TCP" && tcp_persistent_;
     const bool connected = tcp_mode_ == "CLIENT" && transport_ == "TCP" && client_.connected();
+    // Expose all three independent signals, never confusing fallback AP
+    // reachability with STA readiness or a live Modbus TCP connection.
+    const StationLinkState sta = station_link_state_();
+    out += "\",\"wifi_esphome_connected\":";
+    out += sta.esphome_connected ? "true" : "false";
+    out += ",\"wifi_sta_associated\":";
+    out += sta.associated ? "true" : "false";
+    out += ",\"wifi_sta_has_ipv4\":";
+    out += sta.has_ipv4 ? "true" : "false";
+    out += ",\"wifi_sta_ready\":";
+    out += sta.ready() ? "true" : "false";
+    out += ",\"wifi_sta_ip\":\"";
+    out += station_ip_text_(sta);
     out += "\",\"connected\":";
+    out += connected ? "true" : "false";
+    out += ",\"tcp_socket_connected\":";
     out += connected ? "true" : "false";
     out += ",\"persistent_supervisor\":";
     out += supervised ? "true" : "false";
@@ -2770,6 +2855,9 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
     out += ",\"reconnect_failures\":" + String(tcp_reconnect_failures_);
     out += ",\"idle_disconnects\":" + String(tcp_idle_disconnects_);
     out += ",\"keepalive_setup_failures\":" + String(tcp_keepalive_setup_failures_);
+    out += ",\"wifi_status_disagreements\":" + String(tcp_status_mismatches_);
+    out += ",\"tcp_connect_skipped_no_sta\":" + String(tcp_offline_connect_skips_);
+    out += ",\"tcp_sta_link_losses\":" + String(tcp_station_link_losses_);
     out += ",\"next_retry_ms\":" + String(supervised && !connected ?
         tcp_connection_policy::retry_wait_ms(millis(), tcp_next_reconnect_ms_) : 0U);
     out += "}";

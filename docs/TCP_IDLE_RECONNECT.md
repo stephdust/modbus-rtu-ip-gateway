@@ -53,3 +53,65 @@ g++ -std=c++11 -Wall -Wextra -Werror -pedantic -Icomponents/modbus_gateway \
 ```
 
 This test validates only scheduling policy (mode gating, backoff, millis rollover). **It does not emulate lwIP, Wi-Fi, the remote Modbus TCP server, or the ESP32-S3 hardware.** Build/flash and a sustained network-soak test are required before declaring this issue resolved on the physical device.
+
+## Station Wi-Fi vs ESPHome software state (diagnostic 2026-11-22)
+
+The earlier idle supervisor used `wifi::global_wifi_component->is_connected()`
+as the sole indicator of connectivity. A false reading could close an
+otherwise viable TCP socket. Reading Web logs proves only that the gateway
+is reachable **at the time of the request**; it does not prove that STA was
+connected when an older frame was captured, and the fallback AP may also
+serve a Web UI.
+
+In the experimental STA link fix, decisions are made using ESP-IDF:
+`esp_wifi_sta_get_ap_info()` (actual association) AND
+`esp_netif_get_ip_info()` on the **WIFI_STA_DEF** interface (IPv4).
+An AP-only address must never count as a routed station address. ESPHome
+`is_connected()` is still reported, but it cannot alone close a TCP socket.
+
+The `/connections` JSON endpoint exposes independent signals:
+- `wifi_esphome_connected`: ESPHome software connection flag
+- `wifi_sta_associated`: Wi-Fi driver's STA association
+- `wifi_sta_has_ipv4`: nonzero STA interface IPv4 (DHCP or static)
+- `wifi_sta_ready`: both driver association and STA IPv4
+- `wifi_sta_ip`: actual STA address or `unavailable`
+- `tcp_socket_connected`: state of the Modbus TCP client socket
+- `wifi_status_disagreements`: count of observed state disagreement edges
+- `tcp_connect_skipped_no_sta`: foreground/manual connects skipped without STA
+- `tcp_sta_link_losses`: confirmed STA/IP losses seen by the idle supervisor
+
+Each transition mismatch may emit one `NET STATE` diagnostic in
+`/frames.txt` (rate-limited to one message every 30 s). The supervisor
+checks at most once per second and the foreground transaction also observes
+mismatches, so 500 ms RTU polling cannot completely hide them.
+
+If STA association/IPv4 is absent, the gateway does not call blocking
+`WiFiClient::connect()` on every RTU request. It returns the configured
+silent/exception Modbus failure, without any automatic replay of writes.
+The first `TCP OFFLINE` event and then one every 30 skipped foreground
+connects provide diagnostics without adding more log spam.
+
+**Important limitation:** when the STA is ready but Flow.io's port 502
+is deliberately closed for OTA, `connect()` may still block until the
+configured TCP timeout (for example ~3 s). This patch does not change
+network socket timeouts or SWR response cache semantics. Those are a
+separate performance issue and should not be conflated with a Wi-Fi drop.
+
+### Tests before merging
+
+Run:
+```sh
+g++ -std=c++11 -Wall -Wextra -Werror -pedantic \
+  -Icomponents/modbus_gateway tests/test_tcp_connection_policy.cpp \
+  -o /tmp/test_tcp_connection_policy
+/tmp/test_tcp_connection_policy
+node tests/check_sta_link_source.mjs
+```
+
+Compile the ESPHome YAML against the branch/ref via
+`external_components.source: github://stephdust/modbus-rtu-ip-gateway@<commit>`
+in Home Assistant before flashing in production. Test normal STA,
+temporary loss of DHCP/association, AP-only mode, Flow.io OTA port
+closure/reopening, and continuous FC03/FC04 reads. Compare both
+`/connections` and `/frames.txt`; do not use the Web UI's reachability
+by itself to declare the station connected.

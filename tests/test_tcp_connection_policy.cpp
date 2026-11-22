@@ -9,6 +9,16 @@
 using namespace esphome::modbus_gateway::tcp_connection_policy;
 
 int main() {
+  // Regression: ESPHome can report false while the STA interface remains
+  // associated and routable; do not kill a usable Modbus TCP socket.
+  assert(station_link_ready(true, true));
+  assert(!status_disagrees(true, true, true));
+  assert(status_disagrees(false, true, true));
+  assert(!station_link_ready(false, true)); // DHCP can retain a stale IP
+  assert(!station_link_ready(true, false)); // AP associated, no station IPv4
+  assert(!station_link_ready(false, false)); // fallback AP only
+  assert(status_disagrees(true, false, false));
+  assert(!status_disagrees(false, false, false));
   assert(maintenance_allowed(true, true, true, true, true));
   assert(!maintenance_allowed(false, true, true, true, true)); // Server mode
   assert(!maintenance_allowed(true, false, true, true, true)); // UDP

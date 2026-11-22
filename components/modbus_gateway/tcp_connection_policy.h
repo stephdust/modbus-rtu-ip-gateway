@@ -12,6 +12,20 @@ static constexpr uint32_t kInitialRetryMs = 2000U;
 static constexpr uint32_t kMaximumRetryMs = 30000U;
 static constexpr int32_t kIdleConnectTimeoutMs = 250;
 
+// ESPHome's software connection state is useful as a diagnostic, but an
+// ESP32 station should be considered usable for TCP only after the Wi-Fi
+// driver reports association AND the STA interface has an IPv4 address.
+// In particular, the fallback softAP IP is not a station address.
+inline bool station_link_ready(bool station_associated, bool station_has_ipv4) {
+  return station_associated && station_has_ipv4;
+}
+
+inline bool status_disagrees(bool esphome_connected, bool station_associated,
+                             bool station_has_ipv4) {
+  return esphome_connected != station_link_ready(station_associated, station_has_ipv4);
+}
+
+
 inline bool due(uint32_t now_ms, uint32_t deadline_ms) {
   // Supports millis() wraparound as long as intervals are below 2^31 ms.
   return static_cast<int32_t>(now_ms - deadline_ms) >= 0;
