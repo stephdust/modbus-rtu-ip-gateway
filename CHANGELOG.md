@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.11 — Save cache settings during Modbus traffic (2026-11-22)
+
+- Allow cache TTL, adaptive mode, SWR maximum age and RTU response window to be saved while a TCP transaction is active.
+- Preserve the in-flight transaction, TCP socket, UART and existing cache entries on this busy-path save.
+- Continue rejecting network, serial, identity and timeout changes during active transactions.
+
 ## 1.3.10 — Larger bounded Modbus capture (2026-11-22)
 
 - Increase the rolling RTU/TCP diagnostic history from 64 to 256 entries.
