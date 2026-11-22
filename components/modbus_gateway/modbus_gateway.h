@@ -164,8 +164,10 @@ class ModbusGateway : public Component {
   bool cache_swr_enabled_{false};
   uint32_t cache_swr_max_age_ms_{10000};
   uint32_t rtu_reply_window_ms_{500};
+  static constexpr uint32_t kBackgroundRefreshMinIntervalMs = 250U;
   uint32_t last_background_refresh_ms_{0};
   uint32_t background_refresh_started_{0};
+  uint32_t background_refresh_started_ms_{0};
   uint32_t background_refresh_succeeded_{0};
   uint32_t background_refresh_failed_{0};
   uint32_t rtu_late_reply_dropped_{0};
@@ -967,8 +969,9 @@ class ModbusGateway : public Component {
           if (is_stale && swr_client_mode_() &&
               client_txn_.state == ClientTxnState::IDLE &&
               (last_background_refresh_ms_ == 0U ||
-               uint32_t(millis() - last_background_refresh_ms_) >= 1000U)) {
+               uint32_t(millis() - last_background_refresh_ms_) >= kBackgroundRefreshMinIntervalMs)) {
             last_background_refresh_ms_ = millis();
+            background_refresh_started_ms_ = last_background_refresh_ms_;
             ++background_refresh_started_;
             add_event_("CACHE REFRESH", String("Background TCP refresh; Unit ID=") +
                        String(unit_id) + "; Function=" + String(pdu[0]) +
@@ -1149,10 +1152,12 @@ class ModbusGateway : public Component {
         cache_store_(CACHE_DIRECTION_CLIENT, unit_id, request_pdu, response_pdu);
         ++background_refresh_succeeded_;
         add_event_("CACHE REFRESH OK", String("Validated TCP refresh stored; Unit ID=") +
-                   String(unit_id) + "; Function=" + String(request_pdu[0]) + ".");
+                   String(unit_id) + "; Function=" + String(request_pdu[0]) +
+                   "; duration=" + String(uint32_t(millis() - background_refresh_started_ms_)) + " ms.");
       } else {
         ++background_refresh_failed_;
-        add_event_("CACHE REFRESH ERROR", "TCP refresh returned an exception or non-cacheable response; no RTU TX.");
+        add_event_("CACHE REFRESH ERROR", String("TCP refresh returned an exception or non-cacheable response; duration=") +
+                   String(uint32_t(millis() - background_refresh_started_ms_)) + " ms; no RTU TX.");
       }
       reset_client_transaction_();
       return;
