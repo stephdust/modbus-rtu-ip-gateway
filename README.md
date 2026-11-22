@@ -10,7 +10,7 @@ A Wi-Fi Modbus gateway built with **ESPHome**, **ESP32-S3** and the **Arduino fr
 
 > **Reference hardware:** [Waveshare ESP32-S3-RS485-CAN](https://docs.waveshare.com/ESP32-S3-RS485-CAN). The project defaults match this board's RS-485 signals: TX GPIO17, RX GPIO18 and RS485 enable GPIO21. The project maintainer reports successful testing with this device, including four connected Modbus TCP clients.
 
-> **Version 1.3.8 source (release candidate):** supports **TCP Client, TCP Server, UDP Client and UDP Server**. TCP Client persistent connections now reconnect automatically even when RTU traffic and Web monitoring are idle. The maintainer reports successful testing on the ESP32-S3 gateway; comprehensive long-duration and multi-mode regression testing remains pending. See [TCP/UDP development and UI behavior](docs/TCP_UDP_DEVELOPMENT.md).
+> **Historical v1.3.8 milestone:** supports **TCP Client, TCP Server, UDP Client and UDP Server**. TCP Client persistent connections now reconnect automatically even when RTU traffic and Web monitoring are idle. The maintainer reports successful testing on the ESP32-S3 gateway; comprehensive long-duration and multi-mode regression testing remains pending. See [TCP/UDP development and UI behavior](docs/TCP_UDP_DEVELOPMENT.md).
 
 ## Installation simplifiée dans Home Assistant (ESPHome)
 
@@ -49,7 +49,7 @@ Both caches are disabled by default. Each can be enabled separately in the Web U
 
 See [Cache behavior and configuration](docs/CACHE.md) for details. The cache option displayed in Section 1 follows the selected Client/Server mode; the other mode's setting remains saved in NVS.
 
-### Bounded background refresh for RTU display (source v1.3.2)
+### Bounded background refresh for RTU display (introduced in v1.3.2; improved in v1.3.13)
 
 An opt-in **stale-while-revalidate** option is available in TCP Client mode
 when the client read cache and persistent TCP connection are enabled.
@@ -66,6 +66,8 @@ it in the Modbus IP section. Defaults are 10,000 ms maximum data age and
 A cached response remains *structurally validated*, but its actual device
 values can be stale—do not use this mode for signals that must always
 reflect live safety-critical state.
+
+**Current source v1.3.13 (field-tested, 22 November 2026):** Background refresh is now scheduled independently of the RTU request that first noticed stale data. When the TCP client is idle, the scheduler selects the most overdue recently requested cache key (age minus its TTL), while keeping one TCP transaction in flight and a minimum 250 ms interval between refresh starts. Foreground misses remain prioritized, and background refresh never emits an unsolicited RTU reply. Frame logs show the selected address, quantity and overdue time. In a 256-event capture around five minutes after boot, the three FC03 polling groups (addresses 52 / 500 / 1000) showed 29 fresh hits and 10 stale hits (25.6% stale); observed maximum response ages were 2489 / 1693 / 1844 ms respectively. Nine background refreshes completed, without explicit TCP errors in this short capture. These measurements support an improvement for address 500 versus an earlier observed 3714 ms, but do not prove long-duration stability or guarantee an age below 2 seconds. See [Cache behavior](docs/CACHE.md) and [Changelog](CHANGELOG.md).
 
 The `/cache-stats` endpoint reports stale hits, successful/failed refreshes,
 and dropped late RTU responses. Full details in [Cache behavior](docs/CACHE.md).
