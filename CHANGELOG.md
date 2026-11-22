@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.9 — RTU response window save during live traffic (2026-11-22)
+
+- Add a dedicated save action for the maximum RTU response window (250–2000 ms, 50 ms steps), independent of ongoing Modbus transactions.
+- Persist the value without restarting UART/TCP, clearing the cache or interrupting the current request; subsequent transactions use the new setting.
+- Keep the existing busy protection on the general configuration save, so transport and GPIO changes cannot disrupt in-flight transactions.
+- Add FR/EN save status feedback in the Web UI.
+
 ## 1.3.8 — Autonomous persistent TCP reconnect (validated on ESP32-S3, 2026-11-21; release candidate)
 
 - Fix **TCP Client** mode where an idle persistent socket was not supervised when no RTU requests arrived. The Web frame/connection diagnostics pages are not required to keep the TCP connection alive.
