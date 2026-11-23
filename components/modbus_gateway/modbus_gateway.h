@@ -45,13 +45,23 @@ class ModbusGateway : public Component {
   void set_tcp_timeout(uint32_t v) { tcp_timeout_ms_ = v; }
   void set_version(const std::string &v) { version_ = v; }
 
+  static const char *timezone_rule_(const std::string &zone) {
+    if (zone == "UTC") return "UTC0";
+    if (zone == "Europe/London") return "GMT0BST,M3.5.0/1,M10.5.0/2";
+    if (zone == "America/New_York") return "EST5EDT,M3.2.0/2,M11.1.0/2";
+    if (zone == "America/Los_Angeles") return "PST8PDT,M3.2.0/2,M11.1.0/2";
+    if (zone == "Asia/Tokyo") return "JST-9";
+    if (zone == "Asia/Dubai") return "<+04>-4";
+    return "CET-1CEST,M3.5.0/2,M10.5.0/3";
+  }
+  void apply_timezone_() { setenv("TZ", timezone_rule_(timezone_), 1); tzset(); }
+
   void setup() override {
     load_settings_();
     // NTP runs asynchronously; Modbus traffic is never held waiting for time sync.
     // Arduino configTime() sets TZ to UTC; apply Europe/Paris after NTP setup.
     configTime(0, 0, "pool.ntp.org", "time.google.com");
-    setenv("TZ", "CET-1CEST,M3.5.0/2,M10.5.0/3", 1);
-    tzset();
+    apply_timezone_();
     rx_.reserve(260);
     rx_timestamps_us_.reserve(260);
     client_txn_.request_pdu.reserve(253);
@@ -219,6 +229,7 @@ class ModbusGateway : public Component {
   bool manual_rtu_id_{false};
   uint8_t configured_rtu_id_{1};
   ::Preferences prefs_;
+  std::string timezone_{"Europe/Paris"};
   WiFiClient client_;
   // Persistent client health is maintained in loop() even when no RTU
   // requests arrive and no browser is polling /frames or /connections.
@@ -874,6 +885,10 @@ class ModbusGateway : public Component {
 
   void load_settings_() {
     prefs_.begin("mbgateway", false);
+    timezone_ = prefs_.getString("timezone", "Europe/Paris").c_str();
+    bool valid_zone = false;
+    for (const char *zone : {"Europe/Paris", "UTC", "Europe/London", "America/New_York", "America/Los_Angeles", "Asia/Tokyo", "Asia/Dubai"}) if (timezone_ == zone) valid_zone = true;
+    if (!valid_zone) timezone_ = "Europe/Paris";
     cfg_host_ = prefs_.getString("host", cfg_host_.c_str()).c_str();
     tcp_mode_ = prefs_.getString("mode", tcp_mode_.c_str()).c_str();
     transport_ = prefs_.getString("transport", transport_.c_str()).c_str();
@@ -2689,6 +2704,13 @@ main>.bottom-actions>button{height:44px!important;min-height:44px!important;max-
 <div><label>GPIO TX (-1 = automatique)</label><input name="tx" form="cfg" type="number" min="-1" max="48" value=")HTML"; s += String(tx_gpio_); s += R"HTML("></div>
 <div><label>GPIO RX (-1 = automatique)</label><input name="rx" form="cfg" type="number" min="-1" max="48" value=")HTML"; s += String(rx_gpio_); s += R"HTML("></div>
 <div><label>GPIO DE/RE/EN (-1 = automatique)</label><input name="de" form="cfg" type="number" min="-1" max="48" value=")HTML"; s += String(de_re_gpio_); s += R"HTML("></div>
+<div><label>Fuseau horaire / Timezone</label><select name="timezone" form="cfg">)HTML";
+    for (const char *zone : {"Europe/Paris", "UTC", "Europe/London", "America/New_York", "America/Los_Angeles", "Asia/Tokyo", "Asia/Dubai"}) {
+      s += "<option value=\"" + String(zone) + "\"";
+      if (timezone_ == zone) s += " selected";
+      s += ">" + String(zone) + "</option>";
+    }
+    s += R"HTML(</select></div>
 </div>
 <p class="muted">-1 = sélection automatique de la broche. Les paramètres sont enregistrés en mémoire. Toute modification des GPIO redémarre l’ESP32.</p>
 </section>
@@ -3034,7 +3056,9 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
     String chunk;
     chunk.reserve(2048);
     chunk += "Modbus RTU <-> TCP - Frame capture\r\n";
-    chunk += "Timestamps: Europe/Paris local time with milliseconds (uptime fallback before NTP sync).\r\n";
+    chunk += "Timestamps: ";
+    chunk += timezone_.c_str();
+    chunk += " local time with milliseconds (uptime fallback before NTP sync).\r\n";
     chunk += "Exported entries: ";
     chunk += String(log_count_);
     chunk += " (maximum retained: ";
@@ -3222,6 +3246,12 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
     int new_rx = web_.hasArg("rx") ? web_.arg("rx").toInt() : rx_gpio_;
     int new_de = web_.hasArg("de") ? web_.arg("de").toInt() : de_re_gpio_;
     bool gpio_changed = new_tx != tx_gpio_ || new_rx != rx_gpio_ || new_de != de_re_gpio_;
+    if (web_.hasArg("timezone")) {
+      const std::string requested = web_.arg("timezone").c_str();
+      for (const char *zone : {"Europe/Paris", "UTC", "Europe/London", "America/New_York", "America/Los_Angeles", "Asia/Tokyo", "Asia/Dubai"}) {
+        if (requested == zone) { timezone_ = requested; prefs_.putString("timezone", timezone_.c_str()); apply_timezone_(); break; }
+      }
+    }
     if (web_.hasArg("mode")) tcp_mode_ = web_.arg("mode").c_str();
     if (web_.hasArg("transport")) transport_ = web_.arg("transport") == "UDP" ? "UDP" : "TCP";
 
