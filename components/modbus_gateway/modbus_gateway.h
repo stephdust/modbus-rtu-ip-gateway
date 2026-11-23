@@ -74,7 +74,8 @@ class ModbusGateway : public Component {
     // Lightweight readiness endpoint used by the reboot page before redirecting.
     web_.on("/health", HTTP_GET, [this]() {
       web_.sendHeader("Cache-Control", "no-store, no-cache, must-revalidate");
-      web_.send(200, "text/plain; charset=utf-8", "OK");
+      web_.send(config_reboot_pending_ ? 503 : 200, "text/plain; charset=utf-8",
+                config_reboot_pending_ ? "Restart pending" : "OK");
     });
     // Serve embedded images independently so the main HTML remains small and reliable.
     web_.on("/img/logo.webp", HTTP_GET, [this]() { this->serve_image_(LOGO_IMG, "image/webp"); });
@@ -99,12 +100,34 @@ class ModbusGateway : public Component {
     web_.begin();
     start_tcp_server_();
     start_udp_();
+    if (prefs_.getBool("cfgstaged", false)) {
+      prefs_.putBool("cfgstaged", false);
+      add_event_("CONFIG", "Saved Web settings applied after controlled reboot.");
+      ESP_LOGI("modbus_gateway", "Saved Web configuration applied after reboot.");
+    }
     ESP_LOGI("modbus_gateway", "Web UI started on port 80");
   }
 
   void loop() override {
     const uint32_t loop_started_us = micros();
     web_.handleClient();
+    // Do not start another Modbus request after a Web configuration save.
+    // The active asynchronous TCP/UDP client transaction may still finish.
+    if (config_reboot_pending_) {
+      if (client_txn_.state != ClientTxnState::IDLE) {
+        if (transport_ == "UDP") process_udp_client_transaction_();
+        else process_client_transaction_();
+      }
+      if (client_txn_.state == ClientTxnState::IDLE &&
+          uint32_t(millis() - config_reboot_requested_ms_) >= 1500U) {
+        ESP_LOGI("modbus_gateway", "Restarting with saved configuration between transactions.");
+        client_.stop();
+        stop_tcp_clients_();
+        tcp_server_.stop();
+        ESP.restart();
+      }
+      return;
+    }
     if (tcp_mode_ == "SERVER") {
       if (transport_ == "UDP") handle_udp_server_();
       else handle_tcp_server_();
@@ -197,6 +220,8 @@ class ModbusGateway : public Component {
   uint8_t cfg_stop_bits_{1};
 
   WebServer web_{80};
+  bool config_reboot_pending_{false};
+  uint32_t config_reboot_requested_ms_{0};
   int tx_gpio_{17};
   int rx_gpio_{18};
   int de_re_gpio_{21};
@@ -2712,7 +2737,7 @@ main>.bottom-actions>button{height:44px!important;min-height:44px!important;max-
     }
     s += R"HTML(</select></div>
 </div>
-<p class="muted">-1 = sélection automatique de la broche. Les paramètres sont enregistrés en mémoire. Toute modification des GPIO redémarre l’ESP32.</p>
+<p class="muted">-1 = sélection automatique de la broche. Les paramètres sont enregistrés en mémoire. Toute modification de configuration redémarre l’ESP32 après la transaction Modbus en cours.</p>
 </section>
 <section class="dashboard-status" aria-label="État et connexions"><h2>♧ <span data-fr="État et connexions" data-en="Status and connections">État et connexions</span></h2>
 <div class="status-content">
@@ -2768,7 +2793,7 @@ const translations={
 'Baudrate':'Baud rate','Data bits':'Data bits','Parity':'Parity','Stop bits':'Stop bits',
 'GPIO TX (-1 = automatique)':'TX GPIO (-1 = automatic)','GPIO RX (-1 = automatique)':'RX GPIO (-1 = automatic)','GPIO DE/RE/EN (-1 = automatique)':'DE/RE/EN GPIO (-1 = automatic)',
 'Identifiant Modbus RTU':'Modbus RTU device ID','Automatique (adresse reçue)':'Automatic (received address)','Manuel':'Manual','ID RTU manuel (1–247)':'Manual RTU ID (1–247)',
-'Enregistrer / appliquer':'Save / apply','Enregistrement global':'Apply all settings','Les paramètres des sections 1, 2 et 3 seront enregistrés ensemble.':'Settings in sections 1, 2 and 3 will be saved together.','-1 = sélection automatique de la broche. Les paramètres sont enregistrés en mémoire. Toute modification des GPIO redémarre l’ESP32.':'-1 = automatic pin selection. Settings are stored in memory. Any GPIO change restarts the ESP32.',
+'Enregistrer / appliquer':'Save / apply','Enregistrement global':'Apply all settings','Les paramètres des sections 1, 2 et 3 seront enregistrés ensemble.':'Settings in sections 1, 2 and 3 will be saved together.','-1 = sélection automatique de la broche. Les paramètres sont enregistrés en mémoire. Toute modification de configuration redémarre l’ESP32 après la transaction Modbus en cours.':'-1 = automatic pin selection. Settings are saved in memory. Configuration changes restart the ESP32 after the active Modbus transaction.',
 'Paramètres Modbus RTU':'Modbus RTU settings','Configuration':'Configuration','Debug des trames':'Frame diagnostics',
 'RTU RX/TX et IP TCP/UDP TX/RX · rafraîchissement automatique toutes les 1,5 s':'RTU RX/TX and IP TCP/UDP TX/RX · automatic refresh every 1.5 s',
 'Les tentatives de connexion TCP et les erreurs réseau sont également affichées dans cette fenêtre.':'TCP connection attempts and network errors are also displayed in this window.',
@@ -3149,7 +3174,7 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
     page += "</p><div class=\"seconds\"><span id=\"seconds\">5</span></div><p class=\"muted\">";
     page += english ? "The main page will open automatically when the gateway is ready." : "La page principale s’ouvrira automatiquement lorsque la passerelle sera prête.";
     page += "</p><p id=\"status\" aria-live=\"polite\">";
-    page += english ? "Restarting in 5 seconds…" : "Redémarrage dans 5 secondes…";
+    page += english ? "Checking for restart in 5 seconds…" : "Vérification du redémarrage dans 5 secondes…";
     page += "</p></main><script>const english=";
     page += english ? "true" : "false";
     page += ";const text=english?{waiting:'Waiting for the gateway to come back online…',checking:'Checking gateway…',online:'Gateway online. Returning to the main page…',retry:'Gateway not ready yet. Retrying…'}:{waiting:'En attente du retour de la passerelle…',checking:'Vérification de la passerelle…',online:'Passerelle accessible. Retour à la page principale…',retry:'La passerelle n’est pas encore prête. Nouvelle tentative…'};let remaining=5;const seconds=document.getElementById('seconds');const status=document.getElementById('status');const countdown=setInterval(()=>{remaining=Math.max(0,remaining-1);seconds.textContent=String(remaining);if(remaining===0){clearInterval(countdown);status.textContent=text.waiting;checkGateway();}},1000);let checking=false;async function checkGateway(){if(checking)return;checking=true;const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),1500);try{const response=await fetch('/health?ts='+Date.now(),{cache:'no-store',signal:controller.signal});if(response.ok){status.textContent=text.online;window.location.replace('/');return;}}catch(error){}finally{clearTimeout(timeout);checking=false;}status.textContent=text.retry;setTimeout(checkGateway,1000);}</script></body></html>";
@@ -3174,163 +3199,181 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
     send_reboot_response_(english);
   }
 
-  // This setting is independent of the active TCP/RTU transaction.
-  // Save it without resetting the socket, UART or response cache.
+  // Save to NVS only: leave all live TCP/UDP/UART settings unchanged
+  // until the active Modbus transaction has completed and the ESP32 reboots.
   void save_config_() {
-    // A busy TCP transaction must not block cache-only Web configuration.
-    // Reject all transport, serial, identity and timeout changes while busy.
-    if (client_txn_.state != ClientTxnState::IDLE) {
-      const bool safe =
-          (!web_.hasArg("host") || std::string(web_.arg("host").substring(0,63).c_str()) == cfg_host_) &&
-          (!web_.hasArg("port") || web_.arg("port").toInt() == cfg_port_) &&
-          (!web_.hasArg("mode") || std::string(web_.arg("mode").c_str()) == tcp_mode_) &&
-          (!web_.hasArg("transport") || std::string(web_.arg("transport").c_str()) == transport_) &&
-          (!web_.hasArg("timeout") || web_.arg("timeout").toInt() * 1000 == int(tcp_timeout_ms_)) &&
-          (!web_.hasArg("timeout_behavior") || (web_.arg("timeout_behavior") == "silent") == silent_on_timeout_) &&
-          (!web_.hasArg("baud") || web_.arg("baud").toInt() == int(cfg_baud_)) &&
-          (!web_.hasArg("dbits") || web_.arg("dbits").toInt() == cfg_data_bits_) &&
-          (!web_.hasArg("parity") || std::string(web_.arg("parity").c_str()) == cfg_parity_) &&
-          (!web_.hasArg("sbits") || web_.arg("sbits").toInt() == cfg_stop_bits_) &&
-          (!web_.hasArg("tx") || web_.arg("tx").toInt() == tx_gpio_) &&
-          (!web_.hasArg("rx") || web_.arg("rx").toInt() == rx_gpio_) &&
-          (!web_.hasArg("de") || web_.arg("de").toInt() == de_re_gpio_) &&
-          (!web_.hasArg("idmode") || (web_.arg("idmode") == "manual") == manual_rtu_id_) &&
-          (!web_.hasArg("rtuid") || web_.arg("rtuid").toInt() == configured_rtu_id_) &&
-          (!web_.hasArg("persistent") || (web_.arg("persistent") == "1") == tcp_persistent_);
-      if (!safe) {
-        web_.send(409, "text/plain; charset=utf-8",
-                  "Modification réseau ou série pendant une transaction Modbus; réessayez.");
-        return;
-      }
-      // Cache settings are independent of the in-flight TCP request. Do not
-      // clear cached entries or restart UART, server, or persistent socket.
-      if (tcp_mode_ == "CLIENT") {
-        cache_client_enabled_ = web_.hasArg("cache_client") && web_.arg("cache_client") == "1";
-        cache_swr_enabled_ = web_.hasArg("cache_swr") && web_.arg("cache_swr") == "1" &&
-                             cache_client_enabled_ && tcp_persistent_ && transport_ == "TCP";
-      } else if (tcp_mode_ == "SERVER") {
-        cache_server_enabled_ = web_.hasArg("cache_server") && web_.arg("cache_server") == "1";
-      }
-      if (web_.hasArg("cache_ttl_mode"))
-        cache_ttl_adaptive_ = web_.arg("cache_ttl_mode") == "adaptive";
-      if (web_.hasArg("cache_ttl")) {
-        const int v = web_.arg("cache_ttl").toInt();
-        if (v >= 50 && v <= 10000) cache_ttl_ms_ = uint32_t(v);
-      }
-      if (web_.hasArg("cache_swr_max")) {
-        const int v = web_.arg("cache_swr_max").toInt();
-        if (v >= 1000 && v <= 30000) cache_swr_max_age_ms_ = uint32_t(v);
-      }
-      if (web_.hasArg("rtu_window")) {
-        const int v = web_.arg("rtu_window").toInt();
-        if (v >= 250 && v <= 2000) rtu_reply_window_ms_ = uint32_t(v);
-      }
-      if (cache_swr_max_age_ms_ < cache_ttl_ms_) cache_swr_max_age_ms_ = cache_ttl_ms_;
-      prefs_.putBool("cachecli", cache_client_enabled_);
-      prefs_.putBool("cachesrv", cache_server_enabled_);
-      prefs_.putBool("cacheswr", cache_swr_enabled_);
-      prefs_.putBool("cacheauto", cache_ttl_adaptive_);
-      prefs_.putUInt("cachettl", cache_ttl_ms_);
-      prefs_.putUInt("swrmaxage", cache_swr_max_age_ms_);
-      prefs_.putUInt("rtuwindow", rtu_reply_window_ms_);
-      web_.sendHeader("Location", "/");
-      web_.send(303, "text/plain", "Paramètres du cache enregistrés");
+    if (config_reboot_pending_) {
+      web_.send(409, "text/plain; charset=utf-8", "Redémarrage déjà en attente.");
       return;
     }
-    const std::string previous_host = cfg_host_;
-    const std::string previous_mode = tcp_mode_;
-    const std::string previous_transport = transport_;
-    const uint16_t previous_port = cfg_port_;
-    const bool previous_persistent = tcp_persistent_;
-    int new_tx = web_.hasArg("tx") ? web_.arg("tx").toInt() : tx_gpio_;
-    int new_rx = web_.hasArg("rx") ? web_.arg("rx").toInt() : rx_gpio_;
-    int new_de = web_.hasArg("de") ? web_.arg("de").toInt() : de_re_gpio_;
-    bool gpio_changed = new_tx != tx_gpio_ || new_rx != rx_gpio_ || new_de != de_re_gpio_;
-    if (web_.hasArg("timezone")) {
-      const std::string requested = web_.arg("timezone").c_str();
-      for (const char *zone : {"Europe/Paris", "UTC", "Europe/London", "America/New_York", "America/Los_Angeles", "Asia/Tokyo", "Asia/Dubai"}) {
-        if (requested == zone) { timezone_ = requested; prefs_.putString("timezone", timezone_.c_str()); apply_timezone_(); break; }
-      }
+    const bool english = web_.arg("lang") == "en";
+    const std::string new_mode = web_.hasArg("mode") ? std::string(web_.arg("mode").c_str()) : tcp_mode_;
+    const std::string new_transport = web_.hasArg("transport") ? std::string(web_.arg("transport").c_str()) : transport_;
+    if ((new_mode != "CLIENT" && new_mode != "SERVER") ||
+        (new_transport != "TCP" && new_transport != "UDP")) {
+      web_.send(400, "text/plain; charset=utf-8", "Mode ou transport invalide."); return;
     }
-    if (web_.hasArg("mode")) tcp_mode_ = web_.arg("mode").c_str();
-    if (web_.hasArg("transport")) transport_ = web_.arg("transport") == "UDP" ? "UDP" : "TCP";
+    const std::string new_host = web_.hasArg("host") ?
+        std::string(web_.arg("host").substring(0, 63).c_str()) : cfg_host_;
+    uint16_t new_port = cfg_port_;
+    if (web_.hasArg("port")) {
+      const int v = web_.arg("port").toInt();
+      if (v < 1 || v > 65535) { web_.send(400, "text/plain; charset=utf-8", "Port invalide (1-65535)."); return; }
+      new_port = uint16_t(v);
+    }
+    uint32_t new_timeout = tcp_timeout_ms_;
+    if (web_.hasArg("timeout")) {
+      const int v = web_.arg("timeout").toInt();
+      if (v < 1 || v > 30) { web_.send(400, "text/plain; charset=utf-8", "Timeout invalide (1-30 s)."); return; }
+      new_timeout = uint32_t(v) * 1000U;
+    }
+    const bool new_silent = web_.hasArg("timeout_behavior") ?
+        web_.arg("timeout_behavior") == "silent" : silent_on_timeout_;
 
-    if (web_.hasArg("host")) cfg_host_ = web_.arg("host").substring(0,63).c_str();
-    if (web_.hasArg("port")) { int v=web_.arg("port").toInt(); if(v>=1 && v<=65535) cfg_port_=uint16_t(v); }
-    if (web_.hasArg("timeout")) { int v=web_.arg("timeout").toInt(); if(v>=1 && v<=30) tcp_timeout_ms_=uint32_t(v)*1000; }
-    if (web_.hasArg("timeout_behavior")) silent_on_timeout_ = web_.arg("timeout_behavior") == "silent";
-    if (web_.hasArg("baud")) cfg_baud_=web_.arg("baud").toInt();
-    if (web_.hasArg("dbits")) cfg_data_bits_=uint8_t(web_.arg("dbits").toInt());
-    if (web_.hasArg("parity")) cfg_parity_=web_.arg("parity").c_str();
-    if (web_.hasArg("sbits")) cfg_stop_bits_=uint8_t(web_.arg("sbits").toInt());
-    if (new_tx >= -1 && new_tx <= 48) tx_gpio_=new_tx;
-    if (new_rx >= -1 && new_rx <= 48) rx_gpio_=new_rx;
-    if (new_de >= -1 && new_de <= 48) de_re_gpio_=new_de;
-    manual_rtu_id_ = web_.arg("idmode") == "manual";
-    if (web_.hasArg("rtuid")) { int v=web_.arg("rtuid").toInt(); if(v>=1 && v<=247) configured_rtu_id_=uint8_t(v); }
-    prefs_.putString("host", cfg_host_.c_str()); prefs_.putString("mode", tcp_mode_.c_str()); prefs_.putString("transport", transport_.c_str()); prefs_.putUShort("port", cfg_port_);
-    prefs_.putUInt("timeout", tcp_timeout_ms_); prefs_.putBool("silentto", silent_on_timeout_); prefs_.putInt("tx", tx_gpio_);
-    prefs_.putInt("rx", rx_gpio_); prefs_.putInt("de", de_re_gpio_);
-    prefs_.putBool("idmanual", manual_rtu_id_); prefs_.putUChar("rtuid", configured_rtu_id_);
-    prefs_.putUInt("baud", cfg_baud_); prefs_.putUChar("dbits", cfg_data_bits_);
-    prefs_.putString("parity", cfg_parity_.c_str()); prefs_.putUChar("sbits", cfg_stop_bits_);
-    if (web_.hasArg("mode") && tcp_mode_ == "CLIENT") {
-      tcp_persistent_ = web_.hasArg("persistent") && web_.arg("persistent") == "1";
+    uint32_t new_baud = cfg_baud_;
+    if (web_.hasArg("baud")) {
+      new_baud = uint32_t(web_.arg("baud").toInt());
+      if (new_baud != 1200 && new_baud != 2400 && new_baud != 4800 &&
+          new_baud != 9600 && new_baud != 19200 && new_baud != 38400 &&
+          new_baud != 57600 && new_baud != 115200) {
+        web_.send(400, "text/plain; charset=utf-8", "Baudrate invalide."); return;
+      }
     }
-    prefs_.putBool("tcpkeep", tcp_persistent_);
-    // The Web UI only shows the cache switch for the currently selected mode.
-    // Update that mode only; preserve the hidden mode's saved preference.
-    if (tcp_mode_ == "CLIENT") {
-      cache_client_enabled_ = web_.hasArg("cache_client") && web_.arg("cache_client") == "1";
-    } else if (tcp_mode_ == "SERVER") {
-      cache_server_enabled_ = web_.hasArg("cache_server") && web_.arg("cache_server") == "1";
+    uint8_t new_dbits = cfg_data_bits_;
+    if (web_.hasArg("dbits")) {
+      const int v = web_.arg("dbits").toInt();
+      if (v != 7 && v != 8) { web_.send(400, "text/plain; charset=utf-8", "Data bits invalides."); return; }
+      new_dbits = uint8_t(v);
     }
-    if (web_.hasArg("cache_ttl_mode")) cache_ttl_adaptive_ = web_.arg("cache_ttl_mode") == "adaptive";
+    const std::string new_parity = web_.hasArg("parity") ?
+        std::string(web_.arg("parity").c_str()) : cfg_parity_;
+    if (new_parity != "NONE" && new_parity != "EVEN" && new_parity != "ODD") {
+      web_.send(400, "text/plain; charset=utf-8", "Parité invalide."); return;
+    }
+    uint8_t new_sbits = cfg_stop_bits_;
+    if (web_.hasArg("sbits")) {
+      const int v = web_.arg("sbits").toInt();
+      if (v != 1 && v != 2) { web_.send(400, "text/plain; charset=utf-8", "Stop bits invalides."); return; }
+      new_sbits = uint8_t(v);
+    }
+    const int new_tx = web_.hasArg("tx") ? web_.arg("tx").toInt() : tx_gpio_;
+    const int new_rx = web_.hasArg("rx") ? web_.arg("rx").toInt() : rx_gpio_;
+    const int new_de = web_.hasArg("de") ? web_.arg("de").toInt() : de_re_gpio_;
+    if (new_tx < -1 || new_tx > 48 || new_rx < -1 || new_rx > 48 ||
+        new_de < -1 || new_de > 48) {
+      web_.send(400, "text/plain; charset=utf-8", "GPIO invalide (-1 à 48)."); return;
+    }
+    const bool new_manual_id = web_.hasArg("idmode") ?
+        web_.arg("idmode") == "manual" : manual_rtu_id_;
+    uint8_t new_rtu_id = configured_rtu_id_;
+    if (web_.hasArg("rtuid")) {
+      const int v = web_.arg("rtuid").toInt();
+      if (v < 1 || v > 247) { web_.send(400, "text/plain; charset=utf-8", "RTU ID invalide (1-247)."); return; }
+      new_rtu_id = uint8_t(v);
+    }
+    std::string new_timezone = timezone_;
+    if (web_.hasArg("timezone")) {
+      new_timezone = web_.arg("timezone").c_str();
+      bool valid = false;
+      for (const char *zone : {"Europe/Paris", "UTC", "Europe/London",
+           "America/New_York", "America/Los_Angeles", "Asia/Tokyo", "Asia/Dubai"})
+        if (new_timezone == zone) valid = true;
+      if (!valid) { web_.send(400, "text/plain; charset=utf-8", "Fuseau horaire invalide."); return; }
+    }
+
+    bool new_persistent = tcp_persistent_;
+    if (web_.hasArg("mode") && new_mode == "CLIENT")
+      new_persistent = web_.hasArg("persistent") && web_.arg("persistent") == "1";
+    bool new_cache_client = cache_client_enabled_;
+    bool new_cache_server = cache_server_enabled_;
+    if (new_mode == "CLIENT")
+      new_cache_client = web_.hasArg("cache_client") && web_.arg("cache_client") == "1";
+    else
+      new_cache_server = web_.hasArg("cache_server") && web_.arg("cache_server") == "1";
+    bool new_cache_adaptive = cache_ttl_adaptive_;
+    if (web_.hasArg("cache_ttl_mode"))
+      new_cache_adaptive = web_.arg("cache_ttl_mode") == "adaptive";
+    uint32_t new_cache_ttl = cache_ttl_ms_;
     if (web_.hasArg("cache_ttl")) {
-      int ttl = web_.arg("cache_ttl").toInt();
-      if (ttl >= 50 && ttl <= 10000) cache_ttl_ms_ = uint32_t(ttl);
+      const int v = web_.arg("cache_ttl").toInt();
+      if (v >= 50 && v <= 10000) new_cache_ttl = uint32_t(v);
     }
-    if (tcp_mode_ == "CLIENT") {
-      cache_swr_enabled_ = web_.hasArg("cache_swr") && web_.arg("cache_swr") == "1" &&
-                           cache_client_enabled_ && tcp_persistent_ &&
-                           transport_ == "TCP";
-    }
+    bool new_swr = cache_swr_enabled_;
+    if (new_mode == "CLIENT")
+      new_swr = web_.hasArg("cache_swr") && web_.arg("cache_swr") == "1" &&
+                new_cache_client && new_persistent && new_transport == "TCP";
+    uint32_t new_swr_max_age = cache_swr_max_age_ms_;
     if (web_.hasArg("cache_swr_max")) {
-      int max_age = web_.arg("cache_swr_max").toInt();
-      if (max_age >= 1000 && max_age <= 30000) cache_swr_max_age_ms_ = uint32_t(max_age);
+      const int v = web_.arg("cache_swr_max").toInt();
+      if (v >= 1000 && v <= 30000) new_swr_max_age = uint32_t(v);
     }
+    uint32_t new_rtu_window = rtu_reply_window_ms_;
     if (web_.hasArg("rtu_window")) {
-      int window = web_.arg("rtu_window").toInt();
-      if (window >= 250 && window <= 2000) rtu_reply_window_ms_ = uint32_t(window);
+      const int v = web_.arg("rtu_window").toInt();
+      if (v >= 250 && v <= 2000) new_rtu_window = uint32_t(v);
     }
-    if (cache_swr_max_age_ms_ < cache_ttl_ms_)
-      cache_swr_max_age_ms_ = cache_ttl_ms_;
-    prefs_.putBool("cacheswr", cache_swr_enabled_);
-    prefs_.putUInt("swrmaxage", cache_swr_max_age_ms_);
-    prefs_.putUInt("rtuwindow", rtu_reply_window_ms_);
-    prefs_.putBool("cachecli", cache_client_enabled_);
-    prefs_.putBool("cachesrv", cache_server_enabled_);
-    prefs_.putUInt("cachettl", cache_ttl_ms_);
-    prefs_.putBool("cacheauto", cache_ttl_adaptive_);
-    cache_clear_();
-    if (previous_host != cfg_host_ || previous_port != cfg_port_ ||
-        previous_mode != tcp_mode_ || previous_transport != transport_ ||
-        previous_persistent != tcp_persistent_) {
-      // A changed destination must never reuse the old persistent socket.
-      client_.stop();
-      tcp_link_was_up_ = false;
-      tcp_keepalive_configured_ = false;
-      tcp_retry_delay_ms_ = tcp_connection_policy::kInitialRetryMs;
-      tcp_next_reconnect_ms_ = millis();
-      tcp_last_health_check_ms_ = 0;
-    }
-    if (gpio_changed) {
-      send_reboot_response_(web_.arg("lang") == "en");
+    if (new_swr_max_age < new_cache_ttl) new_swr_max_age = new_cache_ttl;
+
+    const bool changed =
+        new_host != cfg_host_ || new_mode != tcp_mode_ || new_transport != transport_ ||
+        new_port != cfg_port_ || new_timeout != tcp_timeout_ms_ ||
+        new_silent != silent_on_timeout_ || new_baud != cfg_baud_ ||
+        new_dbits != cfg_data_bits_ || new_parity != cfg_parity_ ||
+        new_sbits != cfg_stop_bits_ || new_tx != tx_gpio_ ||
+        new_rx != rx_gpio_ || new_de != de_re_gpio_ ||
+        new_manual_id != manual_rtu_id_ || new_rtu_id != configured_rtu_id_ ||
+        new_persistent != tcp_persistent_ || new_cache_client != cache_client_enabled_ ||
+        new_cache_server != cache_server_enabled_ ||
+        new_cache_adaptive != cache_ttl_adaptive_ || new_cache_ttl != cache_ttl_ms_ ||
+        new_swr != cache_swr_enabled_ || new_swr_max_age != cache_swr_max_age_ms_ ||
+        new_rtu_window != rtu_reply_window_ms_ || new_timezone != timezone_;
+    if (!changed) {
+      web_.sendHeader("Location", "/");
+      web_.send(303, "text/plain; charset=utf-8", "Aucun changement.");
       return;
     }
-    begin_uart_(); start_tcp_server_(); start_udp_();
-    web_.sendHeader("Location", "/"); web_.send(303, "text/plain", "Configuration enregistrée");
+
+    // Write only modified keys to minimize flash wear and latency during a transaction.
+    bool saved = true;
+    if (new_host != cfg_host_) saved = (prefs_.putString("host", new_host.c_str()) > 0) && saved;
+    if (new_mode != tcp_mode_) saved = (prefs_.putString("mode", new_mode.c_str()) > 0) && saved;
+    if (new_transport != transport_) saved = (prefs_.putString("transport", new_transport.c_str()) > 0) && saved;
+    if (new_port != cfg_port_) saved = (prefs_.putUShort("port", new_port) > 0) && saved;
+    if (new_timeout != tcp_timeout_ms_) saved = (prefs_.putUInt("timeout", new_timeout) > 0) && saved;
+    if (new_silent != silent_on_timeout_) saved = (prefs_.putBool("silentto", new_silent) > 0) && saved;
+    if (new_baud != cfg_baud_) saved = (prefs_.putUInt("baud", new_baud) > 0) && saved;
+    if (new_dbits != cfg_data_bits_) saved = (prefs_.putUChar("dbits", new_dbits) > 0) && saved;
+    if (new_parity != cfg_parity_) saved = (prefs_.putString("parity", new_parity.c_str()) > 0) && saved;
+    if (new_sbits != cfg_stop_bits_) saved = (prefs_.putUChar("sbits", new_sbits) > 0) && saved;
+    if (new_tx != tx_gpio_) saved = (prefs_.putInt("tx", new_tx) > 0) && saved;
+    if (new_rx != rx_gpio_) saved = (prefs_.putInt("rx", new_rx) > 0) && saved;
+    if (new_de != de_re_gpio_) saved = (prefs_.putInt("de", new_de) > 0) && saved;
+    if (new_manual_id != manual_rtu_id_) saved = (prefs_.putBool("idmanual", new_manual_id) > 0) && saved;
+    if (new_rtu_id != configured_rtu_id_) saved = (prefs_.putUChar("rtuid", new_rtu_id) > 0) && saved;
+    if (new_persistent != tcp_persistent_) saved = (prefs_.putBool("tcpkeep", new_persistent) > 0) && saved;
+    if (new_cache_client != cache_client_enabled_) saved = (prefs_.putBool("cachecli", new_cache_client) > 0) && saved;
+    if (new_cache_server != cache_server_enabled_) saved = (prefs_.putBool("cachesrv", new_cache_server) > 0) && saved;
+    if (new_cache_adaptive != cache_ttl_adaptive_) saved = (prefs_.putBool("cacheauto", new_cache_adaptive) > 0) && saved;
+    if (new_cache_ttl != cache_ttl_ms_) saved = (prefs_.putUInt("cachettl", new_cache_ttl) > 0) && saved;
+    if (new_swr != cache_swr_enabled_) saved = (prefs_.putBool("cacheswr", new_swr) > 0) && saved;
+    if (new_swr_max_age != cache_swr_max_age_ms_) saved = (prefs_.putUInt("swrmaxage", new_swr_max_age) > 0) && saved;
+    if (new_rtu_window != rtu_reply_window_ms_) saved = (prefs_.putUInt("rtuwindow", new_rtu_window) > 0) && saved;
+    if (new_timezone != timezone_) saved = (prefs_.putString("timezone", new_timezone.c_str()) > 0) && saved;
+    if (!saved || prefs_.putBool("cfgstaged", true) == 0) {
+      ESP_LOGE("modbus_gateway", "Web configuration persistence failed; reboot cancelled.");
+      web_.send(500, "text/plain; charset=utf-8",
+                "Erreur de sauvegarde NVS; redémarrage annulé. Réessayez.");
+      return;
+    }
+    config_reboot_pending_ = true;
+    config_reboot_requested_ms_ = millis();
+    add_event_("CONFIG", "Settings stored in NVS; reboot queued after active Modbus transaction.");
+    ESP_LOGI("modbus_gateway", "Web configuration saved; waiting for Modbus transaction before restart.");
+    web_.sendHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    web_.sendHeader("Connection", "close");
+    web_.send(200, "text/html; charset=utf-8", reboot_page_(english));
   }
+
 };
 
 }  // namespace modbus_gateway
