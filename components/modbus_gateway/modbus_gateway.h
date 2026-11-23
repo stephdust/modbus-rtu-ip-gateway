@@ -48,9 +48,10 @@ class ModbusGateway : public Component {
   void setup() override {
     load_settings_();
     // NTP runs asynchronously; Modbus traffic is never held waiting for time sync.
+    // Arduino configTime() sets TZ to UTC; apply Europe/Paris after NTP setup.
+    configTime(0, 0, "pool.ntp.org", "time.google.com");
     setenv("TZ", "CET-1CEST,M3.5.0/2,M10.5.0/3", 1);
     tzset();
-    configTime(0, 0, "pool.ntp.org", "time.google.com");
     rx_.reserve(260);
     rx_timestamps_us_.reserve(260);
     client_txn_.request_pdu.reserve(253);
