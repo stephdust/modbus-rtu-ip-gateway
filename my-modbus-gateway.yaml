@@ -61,7 +61,7 @@ ota:
   - platform: esphome
 
 external_components:
-  - source: github://stephdust/modbus-rtu-ip-gateway@fix/tcp-preempt-psram-web-20261125
+  - source: github://stephdust/modbus-rtu-ip-gateway@fix/web-incremental-frames-20261125
     refresh: 0s
 #  - source:
 #      type: local

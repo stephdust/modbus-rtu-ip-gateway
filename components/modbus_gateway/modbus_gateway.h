@@ -14,6 +14,8 @@
 #include "gateway_diagnostic_policy.h"
 #include "deferred_rtu_policy.h"
 #include "frame_log_policy.h"
+#include "frame_delta_policy.h"
+#include <esp_system.h>
 #include <lwip/sockets.h>
 #include <lwip/tcp.h>
 // ESP-IDF and Arduino WebServer both define HTTP_ANY; this component does not use it.
@@ -91,6 +93,10 @@ class ModbusGateway : public Component {
       ESP_LOGW("modbus_gateway", "IPv4 acquired diag registration failed (%d)", int(gotIpDiagStatus));
     // Fixed-size frame log in PSRAM: replaces 256 persistent Arduino String
     // pairs, whose per-frame heap allocations caused internal fragmentation.
+    // One epoch per boot. A new generation after /clear prevents stale
+    // browser cursors from splicing unrelated frame sequences together.
+    frame_stream_epoch_ = esp_random();
+    if (!frame_stream_epoch_) frame_stream_epoch_ = 1U;
     frame_logs_ = static_cast<FrameLog *>(heap_caps_calloc(
         FRAME_LOG_CAPACITY, sizeof(FrameLog), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
     if (!frame_logs_)
@@ -145,7 +151,14 @@ class ModbusGateway : public Component {
       web_.sendHeader("Content-Disposition", "attachment; filename=\"modbus-frame-capture.txt\"");
       this->send_frames_text_();
     });
-    web_.on("/clear", HTTP_POST, [this]() { log_head_ = 0; log_count_ = 0; diag_event_("DIAG FRAME CLEAR", "frame log cleared via Web; independent diagnostic ring preserved"); web_.send(200, "application/json", "{\"cleared\":true}"); });
+    web_.on("/clear", HTTP_POST, [this]() {
+      log_head_ = 0;
+      log_count_ = 0;
+      ++frame_stream_epoch_;
+      if (!frame_stream_epoch_) frame_stream_epoch_ = 1U;
+      diag_event_("DIAG FRAME CLEAR", "frame log cleared via Web; independent diagnostic ring preserved");
+      web_.send(200, "application/json", "{\"cleared\":true}");
+    });
     web_.on("/listen", HTTP_GET, [this]() { web_.send(200, "application/json", String("{\"listening\":") + (rtu_listening_ ? "true}" : "false}")); });
     web_.on("/listen", HTTP_POST, [this]() { rtu_listening_ = !rtu_listening_; rx_.clear(); rx_timestamps_us_.clear(); while (Serial1.available()) Serial1.read(); diag_event_("DIAG RTU LISTEN", rtu_listening_ ? "enabled_by_web" : "paused_by_web"); ESP_LOGI("modbus_gateway", "RTU listener %s", rtu_listening_ ? "enabled" : "paused"); web_.send(200, "application/json", String("{\"listening\":") + (rtu_listening_ ? "true}" : "false}")); });
     web_.on("/manual", HTTP_POST, [this]() { this->manual_request_(); });
@@ -478,6 +491,11 @@ class ModbusGateway : public Component {
   uint32_t diag_cache_refresh_max_ms_{0}, diag_cache_refresh_slow_count_{0};
   uint32_t diag_web_export_max_us_{0};
   uint32_t diag_web_frames_polls_{0};
+  uint32_t diag_frames_full_responses_{0};
+  uint32_t diag_frames_delta_responses_{0};
+  uint32_t diag_frames_empty_responses_{0};
+  uint32_t diag_frames_rows_sent_{0};
+  uint32_t diag_frames_cursor_resyncs_{0};
   uint32_t diag_web_frames_last_ms_{0};
   uint32_t diag_web_frames_gap_max_ms_{0};
   uint32_t diag_web_frames_slow_gap_count_{0};
@@ -707,6 +725,13 @@ class ModbusGateway : public Component {
     out += ",\"cache_refresh_slow\":" + String(diag_cache_refresh_slow_count_);
     out += ",\"web_export_max_us\":" + String(diag_web_export_max_us_);
     out += ",\"frames_poll_count\":" + String(diag_web_frames_polls_);
+    out += ",\"frames_full_responses\":" + String(diag_frames_full_responses_);
+    out += ",\"frames_delta_responses\":" + String(diag_frames_delta_responses_);
+    out += ",\"frames_empty_responses\":" + String(diag_frames_empty_responses_);
+    out += ",\"frames_rows_sent\":" + String(diag_frames_rows_sent_);
+    out += ",\"frames_cursor_resyncs\":" + String(diag_frames_cursor_resyncs_);
+    out += ",\"frames_stream_epoch\":" + String(frame_stream_epoch_);
+    out += ",\"frames_latest_seq\":" + String(frame_log_sequence_);
     out += ",\"frames_poll_gap_max_ms\":" + String(diag_web_frames_gap_max_ms_);
     out += ",\"frames_poll_gaps_gt3s\":" + String(diag_web_frames_slow_gap_count_);
     out += ",\"frames_poll_last_age_ms\":" +
@@ -1003,6 +1028,7 @@ class ModbusGateway : public Component {
     char hex[784]{};
     uint32_t when{0};
     uint64_t epoch_ms{0};
+    uint32_t seq{0};   // Within-boot strictly monotonic cursor.
   };
   static uint64_t wall_clock_ms_() {
     struct timeval tv{};
@@ -1023,11 +1049,21 @@ class ModbusGateway : public Component {
   FrameLog *frame_logs_{nullptr};
   size_t log_head_{0};
   size_t log_count_{0};
+  uint32_t frame_stream_epoch_{0};
+  uint32_t frame_log_sequence_{0};
 
   void frame_log_advance_(FrameLog &entry, const char *direction) {
     snprintf(entry.direction, sizeof(entry.direction), "%s", direction ? direction : "");
     entry.when = millis();
     entry.epoch_ms = wall_clock_ms_();
+    ++frame_log_sequence_;
+    if (!frame_log_sequence_) {
+      // Avoid reusing the cursor 0 across 32-bit wrap.
+      ++frame_stream_epoch_;
+      if (!frame_stream_epoch_) frame_stream_epoch_ = 1U;
+      ++frame_log_sequence_;
+    }
+    entry.seq = frame_log_sequence_;
     log_head_ = (log_head_ + 1U) % FRAME_LOG_CAPACITY;
     if (log_count_ < FRAME_LOG_CAPACITY) ++log_count_;
   }
@@ -3652,7 +3688,7 @@ function setTheme(theme){
 }
 function toggleTheme(){setTheme(document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark');}
 try{setTheme(localStorage.getItem('modbus_theme_v2')==='light'?'light':'dark');}catch(e){setTheme('dark');}
-function toggleLanguage(){currentLanguage=currentLanguage==='fr'?'en':'fr';document.getElementById('form_lang').value=currentLanguage;document.getElementById('reboot_lang').value=currentLanguage;applyLanguage();setTheme(document.documentElement.getAttribute('data-theme'));refresh();}
+function toggleLanguage(){currentLanguage=currentLanguage==='fr'?'en':'fr';document.getElementById('form_lang').value=currentLanguage;document.getElementById('reboot_lang').value=currentLanguage;applyLanguage();setTheme(document.documentElement.getAttribute('data-theme'));renderFrameHistory();refresh();}
 function toggleRtuId(){const isServer=document.querySelector('select[name=mode]').value==='SERVER';document.getElementById('rtu_id_mode_field').style.display=isServer?'block':'none';document.getElementById('rtu_id_manual_field').style.display=(isServer&&document.querySelector('select[name=idmode]').value==='manual')?'block':'none';}document.querySelector('select[name=idmode]').addEventListener('change',toggleRtuId);document.querySelector('select[name=mode]').addEventListener('change',toggleRtuId);toggleRtuId();
 function crc16Modbus(bytes){let crc=0xFFFF;for(const b of bytes){crc^=b;for(let i=0;i<8;i++)crc=(crc&1)?((crc>>>1)^0xA001):(crc>>>1);}return crc&0xFFFF;}
 function toggleHostField(){const isServer=document.querySelector('select[name="mode"]').value==='SERVER';const isTcp=document.querySelector('select[name="transport"]').value==='TCP';document.getElementById('host_field').style.display=isServer?'none':'block';document.getElementById('host_input').required=!isServer;const persistentField=document.getElementById('persistent_tcp_field');const persistentInput=document.querySelector('input[name="persistent"]');const showPersistent=!isServer&&isTcp;persistentField.style.display=showPersistent?'block':'none';persistentInput.disabled=!showPersistent;}
@@ -3751,12 +3787,54 @@ async function refreshCacheStats(){
   document.getElementById('dashCacheTtl').textContent=!j.enabled?'—':!j.entries?'—':j.ttl_min_ms===j.ttl_max_ms?j.ttl_min_ms+' ms':j.ttl_min_ms+'–'+j.ttl_max_ms+' ms';
  }catch(e){document.getElementById('dashCacheEntries').textContent='—';document.getElementById('dashCacheTtl').textContent='—';}
 }
-async function refresh(){try{let r=await fetch('/frames');if(!r.ok)throw Error('frames unavailable');let j=await r.json();const frames=Array.isArray(j.frames)?j.frames:[];document.getElementById('frames').innerHTML=frames.map(formatFrame).join('\n')||tr('Aucune trame','No frames');updateDashboard(frames);await refreshCacheStats();}catch(e){document.getElementById('dashWebStatus').textContent=tr('Indisponible','Unavailable');}}
-async function clearFrames(){try{await fetch('/clear',{method:'POST'});document.getElementById('frames').textContent=tr('Aucune trame','No frames');}catch(e){}}
+// Incremental monitor: the first GET displays the latest 64 frames; subsequent
+// GETs send only the cursor so ESPHome does not retransmit 64 entries/1.5s.
+let frameEpoch=null,frameCursor=0,frameHistory=[],frameRefreshBusy=false;
+let frameRequestGeneration=0;
+function renderFrameHistory(){
+  document.getElementById('frames').innerHTML=frameHistory.map(formatFrame).join('\n')||tr('Aucune trame','No frames');
+  updateDashboard(frameHistory);
+}
+async function refresh(){
+  if(frameRefreshBusy)return; // Do not overlap polls on a slow Wi-Fi connection.
+  frameRefreshBusy=true;
+  const requestGeneration=frameRequestGeneration;
+  try{
+    const query=frameEpoch===null?'':'?after='+encodeURIComponent(frameCursor)+'&epoch='+encodeURIComponent(frameEpoch);
+    const r=await fetch('/frames'+query,{cache:'no-store'});
+    if(!r.ok)throw Error('frames unavailable');
+    const j=await r.json();
+    if(requestGeneration!==frameRequestGeneration)return; // /clear started meanwhile.
+    const frames=Array.isArray(j.frames)?j.frames:[];
+    const newApi=Number.isSafeInteger(j.epoch)&&Number.isSafeInteger(j.seq);
+    const reset=!newApi||j.reset===true||frameEpoch===null||Number(j.epoch)!==frameEpoch;
+    if(reset)frameHistory=frames.slice(-64);
+    else if(frames.length)frameHistory=frameHistory.concat(frames).slice(-64);
+    if(newApi){frameEpoch=j.epoch;frameCursor=j.seq;}
+    else{frameEpoch=null;frameCursor=0;} // Compatibility with older firmware.
+    if(reset||frames.length)renderFrameHistory();
+  }catch(e){document.getElementById('dashWebStatus').textContent=tr('Indisponible','Unavailable');}
+  finally{frameRefreshBusy=false;}
+}
+async function clearFrames(){
+  ++frameRequestGeneration;
+  try{
+    const r=await fetch('/clear',{method:'POST'});
+    if(!r.ok)throw Error('clear failed');
+    frameEpoch=null;frameCursor=0;frameHistory=[];
+    renderFrameHistory();
+  }catch(e){refresh();}
+}
 async function updateListenState(){try{let r=await fetch('/listen');let j=await r.json();document.getElementById('listenBtn').textContent=j.listening?tr('Arrêter l’écoute RTU','Stop RTU listening'):tr('Reprendre l’écoute RTU','Resume RTU listening');document.getElementById('listenState').textContent=j.listening?tr('Écoute RTU active','RTU listening'):tr('Écoute RTU suspendue','RTU listening paused');document.getElementById('dashListen').textContent=j.listening?tr('Active','Active'):tr('Suspendue','Paused');}catch(e){}}
 async function toggleListen(){try{await fetch('/listen',{method:'POST'});await updateListenState();}catch(e){document.getElementById('listenState').textContent=tr('Erreur de commande','Command error');}}
 async function sendManual(){let frame=document.getElementById('rtuFrame').value;let out=document.getElementById('manualResponse');out.textContent=tr('Envoi en cours…','Sending…');try{let r=await fetch('/manual',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'frame='+encodeURIComponent(frame)});const responseText=await r.text();out.textContent=translateValue(responseText);refresh();}catch(e){out.textContent=tr('Erreur de communication avec la passerelle','Gateway communication error');}}
-updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();refreshConnections();},1500);
+updateListenState();refresh();refreshConnections();refreshCacheStats();
+setInterval(()=>{if(!document.hidden)refresh();},1500);
+setInterval(()=>{if(!document.hidden)refreshConnections();},3000);
+setInterval(()=>{if(!document.hidden)refreshCacheStats();},5000);
+document.addEventListener('visibilitychange',()=>{
+  if(!document.hidden){refresh();refreshConnections();refreshCacheStats();}
+});
 </script><div class="bottom-actions" role="group" aria-label="Actions de la passerelle"><div class="action-display"><button type="button" id="themeBtn" onclick="toggleTheme()" aria-label="Mode sombre" title="Mode sombre">☾</button><button type="button" id="langBtn" onclick="toggleLanguage()" aria-label="English" title="English">EN</button></div><button type="submit" form="cfg" class="bottom-save" data-fr="Enregistrer / appliquer" data-en="Save / apply">Enregistrer / appliquer</button><button type="submit" form="rebootForm" class="bottom-reboot" data-fr="Redémarrer" data-en="Restart">Redémarrer</button><button type="button" class="bottom-refresh" onclick="refresh();refreshConnections();updateListenState();" data-fr="Actualiser" data-en="Refresh">Actualiser</button></div></main></body></html>)HTML";
     s.flush();
     web_.sendContent(""); // Terminating chunk.
@@ -3857,39 +3935,62 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
   }
 
   void send_frames_json_() {
-    const uint32_t diagRenderStartedUs = micros();
-    const uint32_t diagPollAtMs = millis();
+    const uint32_t render_started_us = micros();
+    const uint32_t poll_ms = millis();
     ++diag_web_frames_polls_;
     if (diag_web_frames_last_ms_) {
-      const uint32_t gapMs = uint32_t(diagPollAtMs - diag_web_frames_last_ms_);
-      if (gapMs > diag_web_frames_gap_max_ms_) diag_web_frames_gap_max_ms_ = gapMs;
-      if (gapMs > 3000U) {
+      const uint32_t gap_ms = uint32_t(poll_ms - diag_web_frames_last_ms_);
+      if (gap_ms > diag_web_frames_gap_max_ms_)
+        diag_web_frames_gap_max_ms_ = gap_ms;
+      if (gap_ms > 3000U) {
         ++diag_web_frames_slow_gap_count_;
-        char message[152];
-        snprintf(message, sizeof(message),
+        char msg[152];
+        snprintf(msg, sizeof(msg),
                  "frames_page_poll_gap_ms=%lu poll_count=%lu uart_rx_bytes=%lu rtu_listening=%u",
-                 (unsigned long)gapMs,
-                 (unsigned long)diag_web_frames_polls_,
-                 (unsigned long)diag_uart_rx_bytes_,
-                 unsigned(rtu_listening_));
-        diag_event_("DIAG MONITOR GAP", message);
+                 (unsigned long)gap_ms, (unsigned long)diag_web_frames_polls_,
+                 (unsigned long)diag_uart_rx_bytes_, unsigned(rtu_listening_));
+        diag_event_("DIAG MONITOR GAP", msg);
       }
     }
-    diag_web_frames_last_ms_ = diagPollAtMs ? diagPollAtMs : 1U;
-    // Chunked JSON avoids an unbounded 40-60 KiB temporary String when
-    // rendering 64 long Modbus frames. Same API schema and visible count.
+    diag_web_frames_last_ms_ = poll_ms ? poll_ms : 1U;
+
+    // Legacy GET /frames returns the last 64 entries. The Web page
+    // subsequently sends ?after=<lastSeq>&epoch=<bootEpoch> to receive only
+    // new entries. Missing, malformed, stale or cross-boot cursors force
+    // a full 64-entry resynchronization. Every response is valid JSON.
+    uint32_t after = 0U, epoch = 0U;
+    const bool cursor_supplied = web_.hasArg("after") && web_.hasArg("epoch");
+    const bool valid_cursor = cursor_supplied &&
+        frame_delta_policy::parse_u32(web_.arg("after").c_str(), after) &&
+        frame_delta_policy::parse_u32(web_.arg("epoch").c_str(), epoch);
+    const uint32_t latest_seq = frame_log_sequence_;
+    const uint32_t current_epoch = frame_stream_epoch_;
+    const frame_delta_policy::Selection choice = frame_delta_policy::select(
+        latest_seq, log_count_, FRAME_WEB_VISIBLE, valid_cursor,
+        after, valid_cursor && epoch == current_epoch);
+    const size_t visible = choice.count;
+    if (choice.reset) {
+      ++diag_frames_full_responses_;
+      if (cursor_supplied) ++diag_frames_cursor_resyncs_;
+    } else if (visible) {
+      ++diag_frames_delta_responses_;
+    } else {
+      ++diag_frames_empty_responses_;
+    }
+    diag_frames_rows_sent_ += uint32_t(visible);
+
     web_.sendHeader("Cache-Control", "no-store");
     web_.setContentLength(CONTENT_LENGTH_UNKNOWN);
     web_.send(200, "application/json", "");
     String chunk;
     chunk.reserve(4096U);
     chunk = "{\"frames\":[";
-    const size_t visible = log_count_ < FRAME_WEB_VISIBLE ? log_count_ : FRAME_WEB_VISIBLE;
+    String row;
+    row.reserve(1152U);  // Reuse one scratch buffer; no per-frame reserve().
     for (size_t i = 0; frame_logs_ && i < visible; ++i) {
       const size_t idx = (log_head_ + FRAME_LOG_CAPACITY - visible + i) % FRAME_LOG_CAPACITY;
       const FrameLog &entry = frame_logs_[idx];
-      String row;
-      row.reserve(1024U);
+      row = "";
       if (i) row += ",";
       row += "{\"time\":";
       append_json_escaped_(row, format_frame_time_(entry).c_str());
@@ -3904,15 +4005,23 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
       }
       chunk += row;
     }
-    chunk += "]}";
+    chunk += "],\"epoch\":";
+    chunk += String(current_epoch);
+    chunk += ",\"seq\":";
+    chunk += String(latest_seq);
+    chunk += ",\"reset\":";
+    chunk += choice.reset ? "true}" : "false}";
     if (chunk.length()) web_.sendContent(chunk);
     web_.sendContent("");
-    const uint32_t renderUs = uint32_t(micros() - diagRenderStartedUs);
-    if (renderUs > 50000U) {
-      char detail[128];
+
+    const uint32_t elapsed_us = uint32_t(micros() - render_started_us);
+    if (elapsed_us > 50000U) {
+      char detail[160];
       snprintf(detail, sizeof(detail),
-               "path=/frames json_stream_us=%lu entries=%u",
-               (unsigned long)renderUs, unsigned(visible));
+               "path=/frames json_stream_us=%lu entries=%u reset=%u cursor=%lu latest=%lu",
+               (unsigned long)elapsed_us, unsigned(visible),
+               unsigned(choice.reset), (unsigned long)after,
+               (unsigned long)latest_seq);
       diag_event_("DIAG WEB RENDER", detail);
     }
   }
