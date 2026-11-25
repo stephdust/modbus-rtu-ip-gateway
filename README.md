@@ -12,9 +12,9 @@ A Wi-Fi Modbus gateway built with **ESPHome**, **ESP32-S3** and the **Arduino fr
 
 > **Historical v1.3.8 milestone:** supports **TCP Client, TCP Server, UDP Client and UDP Server**. TCP Client persistent connections now reconnect automatically even when RTU traffic and Web monitoring are idle. The maintainer reports successful testing on the ESP32-S3 gateway; comprehensive long-duration and multi-mode regression testing remains pending. See [TCP/UDP development and UI behavior](docs/TCP_UDP_DEVELOPMENT.md).
 
-## Current main snapshot — 1.3.16-rc2 (25 November 2026)
+## Current main version — 1.4 (25 November 2026)
 
-`main` now includes the TCP background-refresh read deferral (without unnecessary socket close), bounded RTU deadlines, a fixed 256-entry PSRAM frame log and incremental Web frame monitoring. The Web page is designed for occasional diagnosis, not continuous operation. Initial ESP32-S3 field captures show a persistent TCP connection, zero CRC errors and zero UART overflow; multi-day stability and all transport-mode regressions remain to be validated. See [integration note](docs/MAIN_1.3.16_RC2_FR.md), [TCP/PSRAM details](docs/TCP_PREEMPT_PSRAM_FIX_FR.md) and [incremental Web details](docs/WEB_INCREMENTAL_FRAMES_FR.md).
+`main` now includes the TCP background-refresh read deferral (without unnecessary socket close), bounded RTU deadlines, a fixed 256-entry PSRAM frame log and incremental Web frame monitoring. The Web page is designed for occasional diagnosis, not continuous operation. Initial ESP32-S3 field captures show a persistent TCP connection, zero CRC errors and zero UART overflow; multi-day stability and all transport-mode regressions remain to be validated. See [1.4 integration note](docs/MAIN_1.4_FR.md) (based on the previously tested `1.3.16-rc2` code), [TCP/PSRAM details](docs/TCP_PREEMPT_PSRAM_FIX_FR.md) and [incremental Web details](docs/WEB_INCREMENTAL_FRAMES_FR.md).
 
 ## Installation simplifiée dans Home Assistant (ESPHome)
 
@@ -287,7 +287,8 @@ TCP Server accepts inbound Modbus TCP masters; UDP Server accepts MBAP datagrams
 - [Byte-level latency diagnostics](docs/LATENCY_DIAGNOSTICS.md)
 - [Client TCP asynchronous handling](docs/CLIENT_TCP_ASYNC.md)
 - [Response cache configuration and behavior](docs/CACHE.md)
-- [Current `main` integration: TCP / PSRAM / incremental Web (1.3.16-rc2)](docs/MAIN_1.3.16_RC2_FR.md)
+- [Current `main` version 1.4 — TCP / PSRAM / incremental Web](docs/MAIN_1.4_FR.md)
+- [Historical technical validation of 1.3.16-rc2](docs/MAIN_1.3.16_RC2_FR.md)
 
 ## Security notes
 
@@ -321,7 +322,7 @@ GPLv3 license text.
 
 ## Source version and validation
 
-The component source on this **development branch** reports **v1.3.8** in `components/modbus_gateway/manifest.json`. It is a source change only, not a compiled firmware or published release. The official [GitHub source release v1.3.2](https://github.com/stephdust/my-modbus-rtu-ip-gateway/releases/tag/v1.3.2) is published. This version adds the optional bounded stale-while-revalidate client cache and RTU reply-deadline protection to earlier TCP/UDP, CRC and error-policy features. A GitHub source release is not a precompiled firmware image or proof of the version installed on any individual device. The maintainer has confirmed successful real-display operation of the v1.3.2 background cache on their ESP32-S3 installation. The repository does not include independent endurance, safety, or full TCP/UDP mode regression test results. Earlier versions and their dated screenshots remain in the documentation as historical references. See [CHANGELOG.md](CHANGELOG.md), [v1.3.2 release notes](docs/RELEASE_NOTES_v1.3.2.md), [Client TCP handling](docs/CLIENT_TCP_ASYNC.md) and [Cache behavior](docs/CACHE.md).
+The component on **`main`** reports version **1.4** in `components/modbus_gateway/manifest.json`. This is a source version increment from the previously field-tested **1.3.16-rc2** code, not a new tagged GitHub Release or a separately compiled firmware image. The changes include TCP background-read preemption safety, bounded RTU request expiry, PSRAM frame logging and an incremental on-demand Web monitor. Short ESP32-S3 field tests of the preceding `1.3.16-rc2` version were encouraging; long-duration endurance, write-safety tests and complete TCP/UDP regression testing remain pending. An existing ESPHome installation must be recompiled to display version 1.4. The earlier [v1.3.2 GitHub release](https://github.com/stephdust/modbus-rtu-ip-gateway/releases/tag/v1.3.2) remains available as a historical tagged version. See [CHANGELOG.md](CHANGELOG.md), [version 1.4 notes](docs/MAIN_1.4_FR.md), [1.3.16-rc2 field observations](docs/MAIN_1.3.16_RC2_FR.md) and [cache behavior](docs/CACHE.md).
 
 
 > **Historical v1.2.7 screenshots:** These show the transport-neutral Client/Server interface as captured at the time. For the currently implemented options, see [Quick start](docs/QUICK_START.md) and [Cache behavior](docs/CACHE.md).

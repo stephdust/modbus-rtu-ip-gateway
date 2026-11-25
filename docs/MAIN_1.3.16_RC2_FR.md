@@ -1,4 +1,8 @@
-# Intégration sur main — passerelle 1.3.16-rc2 (25/11/2026)
+# Historique d'intégration — passerelle 1.3.16-rc2 (25/11/2026)
+
+> Document historique : les mesures ci-dessous concernent les essais
+> `1.3.16-rc2`. La version actuelle du composant sur `main` est désormais
+> **1.4**. Voir la [note de version 1.4](MAIN_1.4_FR.md).
 
 Les cinq commits de la branche `fix/tcp-preempt-psram-web-20261125` ont été
 intégrés sur `main` par fast-forward. L'exemple ESPHome cible maintenant :
@@ -12,8 +16,9 @@ external_components:
 
 **Attention :** les configurations ESPHome déjà installées dans Home Assistant
 ne se mettent pas à jour automatiquement lors d'un commit GitHub. Vérifier
-le YAML réellement compilé et recompiler. La version embarquée reste
-`1.3.16-rc2` ; il ne s'agit pas d'une nouvelle release ou d'un tag stable.
+le YAML réellement compilé et recompiler. La version embarquée testée lors de cette intégration était
+`1.3.16-rc2`. La version du composant sur `main` est passée ensuite à
+**1.4** ; cela ne constitue pas une nouvelle release GitHub ni un nouveau tag.
 Pour la reproductibilité, épingler un SHA de commit au lieu de `@main`.
 
 ## Correctifs TCP et protocole

@@ -1,7 +1,8 @@
 # Correctif passerelle ESPHome : TCP préemption + PSRAM Web
 
 Correctif développé sur `fix/tcp-preempt-psram-web-20261125` (essai initial
-`1.3.16-rc1`), puis intégré à `main` dans **1.3.16-rc2** le 25/11/2026.
+`1.3.16-rc1`), puis intégré à `main` dans **1.3.16-rc2** le 25/11/2026. La
+version actuelle du composant est **1.4** (code Modbus identique à la rc2).
 La validation longue durée reste à effectuer.
 
 ## Cause démontrée dans les logs (25/11/2026)
@@ -70,7 +71,8 @@ external_components:
 ```
 
 Le YAML d'exemple sur `main` pointe maintenant vers `@main`. ESPHome doit
-indiquer la version `1.3.16-rc2`. Les essais sur ESP32-S3 sont encourageants,
+indiquer la version **`1.4`** après recompilation. Les essais sur ESP32-S3
+de la version précédente `1.3.16-rc2` sont encourageants,
 mais un test 12–24 heures avec la page Web fermée reste prévu. Modifier la
 configuration YAML réelle dans Home Assistant, puis recompiler.
 

@@ -34,7 +34,7 @@ esp32:
 
 The component uses Arduino `WiFi`, `WebServer` and `Preferences` libraries. Do not change the framework to ESP-IDF unless the component is ported and tested for it.
 
-The sample YAML references `github://stephdust/modbus-rtu-ip-gateway@main` with `refresh: 0s`. As of 25 November 2026, this provides **1.3.16-rc2** (TCP read deferral, PSRAM frame log, incremental on-demand Web diagnostics). See [integration note](MAIN_1.3.16_RC2_FR.md). For a reproducible build, pin a reviewed commit SHA instead of moving `main`. The older `@v1.3.2` release remains available at `github://stephdust/modbus-rtu-ip-gateway@v1.3.2`, but does not include these fixes.
+The sample YAML references `github://stephdust/modbus-rtu-ip-gateway@main` with `refresh: 0s`. As of 25 November 2026, this provides **1.4** (TCP read deferral, PSRAM frame log, incremental on-demand Web diagnostics). See [version 1.4 integration note](MAIN_1.4_FR.md); the recorded hardware tests were carried out on the preceding `1.3.16-rc2` source. For a reproducible build, pin a reviewed commit SHA instead of moving `main`. The older `@v1.3.2` release remains available at `github://stephdust/modbus-rtu-ip-gateway@v1.3.2`, but does not include these fixes.
 
 ## 3. Compile and flash
 

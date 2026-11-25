@@ -1,7 +1,7 @@
 # Modbus TCP socket and ESPHome STA diagnostics
 
 Originally developed on the diagnostic branch, these probes are now part of
-**`main` (`1.3.16-rc2`)**. They preserve the Modbus/RTU scheduler,
+**`main` (currently version `1.4`, following `1.3.16-rc2`)**. They preserve the Modbus/RTU scheduler,
 cache, backoff and TCP close/reconnect logic.
 
 ## Compile through ESPHome

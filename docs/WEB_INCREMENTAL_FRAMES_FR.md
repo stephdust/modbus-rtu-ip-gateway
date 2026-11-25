@@ -1,7 +1,9 @@
 # Correctif Web : journal des trames incrémental (ESPHome)
 
-**Version intégrée à `main` : 1.3.16-rc2 (25/11/2026).**
-Développée initialement sur `fix/tcp-preempt-psram-web-20261125`.
+**Version initialement intégrée : 1.3.16-rc2 (25/11/2026).**
+Le composant sur `main` est désormais en version **1.4**, sans changement
+fonctionnel du moniteur par rapport à cette rc2. Développé initialement sur
+`fix/tcp-preempt-psram-web-20261125`.
 
 ## Pourquoi
 
@@ -86,7 +88,8 @@ external_components:
     components: [modbus_gateway]
 ```
 
-La version doit afficher `1.3.16-rc2`. Les relevés matériels ont confirmé
+La version doit afficher **`1.4`** après recompilation. Les relevés matériels
+sur `1.3.16-rc2` ont confirmé
 79 réponses différentielles sur 86 consultations, sans erreur CRC ni
 saturation UART. Le pic Web reste à 406,8 ms ; le navigateur sert au
 diagnostic ponctuel et reste fermé environ 99 % du temps. Les essais

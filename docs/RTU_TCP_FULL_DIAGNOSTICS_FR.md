@@ -1,7 +1,8 @@
 # Diagnostic étendu ESPHome ↔ Flow.io (25/11/2026)
 
 Instrumentation initialement développée sur `diag/tcp-close-wifi-reasons-20261125`,
-intégrée à `main` avec **1.3.16-rc2**. Ces mesures sont diagnostiques :
+intégrée à `main` avec **1.3.16-rc2**, puis conservée dans la version
+**1.4**. Ces mesures sont diagnostiques :
 elles ne changent pas les délais de requête, le mode Silent ni les règles
 fondamentales du cache et du bus RTU.
 

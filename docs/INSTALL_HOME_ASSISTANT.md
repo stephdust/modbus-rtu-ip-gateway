@@ -2,7 +2,7 @@
 
 **Objectif : installer la passerelle Modbus RTU ↔ TCP/UDP sur un ESP32-S3 directement avec ESPHome Device Builder dans Home Assistant, sans cloner le dépôt GitHub et sans copier les composants C++ dans Home Assistant.**
 
-Ce guide utilise [`my-modbus-gateway.yaml`](../my-modbus-gateway.yaml) de `main` (composant **1.3.16-rc2** au 25/11/2026) et [`secrets.yaml.example`](../secrets.yaml.example). La [release historique v1.3.2](https://github.com/stephdust/modbus-rtu-ip-gateway/releases/tag/v1.3.2) reste disponible, sans les correctifs récents.
+Ce guide utilise [`my-modbus-gateway.yaml`](../my-modbus-gateway.yaml) de `main` (composant **1.4** au 25/11/2026) et [`secrets.yaml.example`](../secrets.yaml.example). La [release historique v1.3.2](https://github.com/stephdust/modbus-rtu-ip-gateway/releases/tag/v1.3.2) reste disponible, sans les correctifs récents.
 
 ## Prérequis
 
@@ -53,10 +53,10 @@ Les intitulés exacts des boutons peuvent varier selon la version du Device Buil
    être mis à jour puis recompilé : un commit GitHub ne change pas
    automatiquement les appareils installés.
 
-   `main` fournit `1.3.16-rc2` au 25 novembre 2026. Pour un build
+   `main` fournit `1.4` au 25 novembre 2026. Pour un build
    reproductible, remplacer `@main` par un SHA de commit fixé. L'ancien
    tag `@v1.3.2` n'inclut pas ces correctifs. Voir la
-   [note d'intégration](MAIN_1.3.16_RC2_FR.md).
+   [note de version 1.4](MAIN_1.4_FR.md).
 
 **Important :** conserver dans le YAML l'entrée suivante :
 
@@ -141,7 +141,7 @@ L'intégration Home Assistant/ESPHome peut être ajoutée pour superviser l'appa
 ## Sources et références
 
 - [YAML complet du projet](../my-modbus-gateway.yaml) et [exemple de secrets](../secrets.yaml.example)
-- [Version sur main](MAIN_1.3.16_RC2_FR.md) et [release historique v1.3.2](https://github.com/stephdust/modbus-rtu-ip-gateway/releases/tag/v1.3.2)
+- [Version sur main (1.4)](MAIN_1.4_FR.md) et [release historique v1.3.2](https://github.com/stephdust/modbus-rtu-ip-gateway/releases/tag/v1.3.2)
 - [Installer ESPHome Device Builder dans Home Assistant (documentation officielle)](https://esphome.io/install/)
 - [Composants externes ESPHome depuis GitHub](https://esphome.io/components/external_components/)
 - [Guide général / comportement de la passerelle](QUICK_START.md) et [cache Modbus](CACHE.md)

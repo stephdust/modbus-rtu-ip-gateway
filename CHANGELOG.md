@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4 — TCP reliability, PSRAM diagnostics and incremental Web (2026-11-25)
+
+- Promote the tested `1.3.16-rc2` source on `main` to component version **1.4**, without additional changes to the Modbus algorithms in this version-only commit.
+- During background SWR TCP refreshes, defer one valid foreground RTU read without unconditionally closing the persistent TCP socket; respect the RTU deadline and allocate a fresh TCP transaction ID. Writes continue to preempt safely without automatic replay.
+- Store the last 256 frame-log entries in fixed PSRAM memory; expose `/frames.txt` and independent `/diag.txt` / `/diag.json` diagnostics.
+- Serve `/frames` incrementally using `epoch` and `seq` cursor semantics; pause monitor polling when the browser tab is hidden.
+- Update ESPHome examples and documentation to use `@main`. Earlier `1.3.16-rc2` field captures showed a persistent TCP session, no Wi-Fi/IP loss, no CRC errors and no UART overflow over the short observed interval.
+- Validation scope: the gateway's source has been used on actual ESP32-S3 hardware; **12–24 h endurance and comprehensive TCP/UDP mode tests remain pending**. This version bump does **not** create a GitHub tag/release or install new firmware on existing ESPHome devices.
+
 ## 1.3.15 — Recover from RTU read backlog during Flow.io OTA (2026-11-22)
 
 - In TCP Client + persistent SWR cache mode, bound new foreground FC01–04 TCP connect attempts to `min(configured timeout, clamp(RTU reply window/2, 100..500 ms))`. This avoids a user-configured 30 s TCP timeout stalling the ESPHome UART/Web loop during Flow.io's port 502 OTA pause. **Writes, UDP, non-SWR and legacy modes retain their configured timeout.**
