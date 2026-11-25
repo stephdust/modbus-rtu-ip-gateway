@@ -7,9 +7,11 @@
 #include <esp_netif.h>
 #include <esp_wifi.h>
 #include <esp_event.h>
+#include <esp_heap_caps.h>
 #include "mbap_codec.h"
 #include "modbus_gateway_policy.h"
 #include "tcp_connection_policy.h"
+#include "gateway_diagnostic_policy.h"
 #include <lwip/sockets.h>
 #include <lwip/tcp.h>
 // ESP-IDF and Arduino WebServer both define HTTP_ANY; this component does not use it.
@@ -70,11 +72,36 @@ class ModbusGateway : public Component {
         &ModbusGateway::on_sta_disconnected_diag_, this, &wifi_disconnect_handler_);
     if (wifiDiagStatus != ESP_OK)
       ESP_LOGW("modbus_gateway", "WiFi disconnect diag registration failed (%d)", int(wifiDiagStatus));
+    const esp_err_t assocDiagStatus = esp_event_handler_instance_register(
+        WIFI_EVENT, WIFI_EVENT_STA_CONNECTED,
+        &ModbusGateway::on_sta_connected_diag_, this, &wifi_assoc_handler_);
+    if (assocDiagStatus != ESP_OK)
+      ESP_LOGW("modbus_gateway", "WiFi association diag registration failed (%d)", int(assocDiagStatus));
     const esp_err_t ipDiagStatus = esp_event_handler_instance_register(
         IP_EVENT, IP_EVENT_STA_LOST_IP,
         &ModbusGateway::on_sta_lost_ip_diag_, this, &ip_lost_handler_);
     if (ipDiagStatus != ESP_OK)
       ESP_LOGW("modbus_gateway", "IPv4 loss diag registration failed (%d)", int(ipDiagStatus));
+    const esp_err_t gotIpDiagStatus = esp_event_handler_instance_register(
+        IP_EVENT, IP_EVENT_STA_GOT_IP,
+        &ModbusGateway::on_sta_got_ip_diag_, this, &ip_got_handler_);
+    if (gotIpDiagStatus != ESP_OK)
+      ESP_LOGW("modbus_gateway", "IPv4 acquired diag registration failed (%d)", int(gotIpDiagStatus));
+    // Dedicated PSRAM flight recorder: rare events survive the 256-frame
+    // rolling capture that is overwritten by continuous RTU traffic.
+    diag_records_ = static_cast<DiagRecord *>(heap_caps_calloc(
+        kDiagCapacity, sizeof(DiagRecord), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (!diag_records_)
+      ESP_LOGW("modbus_gateway", "DIAG PSRAM recorder unavailable; counters remain active");
+    diag_event_("DIAG START", "gateway loop/TCP/RTU/Web diagnostics enabled");
+    char bootDiag[184];
+    snprintf(bootDiag, sizeof(bootDiag),
+             "version=%s mode=%s transport=%s baud=%lu port=%u cache=%u swr=%u persistent=%u rtu_window_ms=%lu",
+             version_.c_str(), tcp_mode_.c_str(), transport_.c_str(),
+             (unsigned long)cfg_baud_, unsigned(cfg_port_), unsigned(cache_client_enabled_),
+             unsigned(cache_swr_enabled_), unsigned(tcp_persistent_),
+             (unsigned long)rtu_reply_window_ms_);
+    diag_event_("DIAG CONFIG", bootDiag);
     rx_.reserve(260);
     rx_timestamps_us_.reserve(260);
     client_txn_.request_pdu.reserve(253);
@@ -101,13 +128,18 @@ class ModbusGateway : public Component {
     web_.on("/frames", HTTP_GET, [this]() { web_.send(200, "application/json", this->frames_json_()); });
     web_.on("/cache-stats", HTTP_GET, [this]() { web_.sendHeader("Cache-Control", "no-store"); web_.send(200, "application/json", this->cache_stats_json_()); });
     web_.on("/connections", HTTP_GET, [this]() { web_.sendHeader("Cache-Control", "no-store"); web_.send(200, "application/json", this->connections_json_()); });
+    web_.on("/diag.txt", HTTP_GET, [this]() { this->send_diag_text_(); });
+    web_.on("/diag.json", HTTP_GET, [this]() {
+      web_.sendHeader("Cache-Control", "no-store");
+      web_.send(200, "application/json", this->diag_json_());
+    });
     web_.on("/frames.txt", HTTP_GET, [this]() {
       web_.sendHeader("Content-Disposition", "attachment; filename=\"modbus-frame-capture.txt\"");
       this->send_frames_text_();
     });
-    web_.on("/clear", HTTP_POST, [this]() { log_head_ = 0; log_count_ = 0; web_.send(200, "application/json", "{\"cleared\":true}"); });
+    web_.on("/clear", HTTP_POST, [this]() { log_head_ = 0; log_count_ = 0; diag_event_("DIAG FRAME CLEAR", "frame log cleared via Web; independent diagnostic ring preserved"); web_.send(200, "application/json", "{\"cleared\":true}"); });
     web_.on("/listen", HTTP_GET, [this]() { web_.send(200, "application/json", String("{\"listening\":") + (rtu_listening_ ? "true}" : "false}")); });
-    web_.on("/listen", HTTP_POST, [this]() { rtu_listening_ = !rtu_listening_; rx_.clear(); rx_timestamps_us_.clear(); while (Serial1.available()) Serial1.read(); ESP_LOGI("modbus_gateway", "RTU listener %s", rtu_listening_ ? "enabled" : "paused"); web_.send(200, "application/json", String("{\"listening\":") + (rtu_listening_ ? "true}" : "false}")); });
+    web_.on("/listen", HTTP_POST, [this]() { rtu_listening_ = !rtu_listening_; rx_.clear(); rx_timestamps_us_.clear(); while (Serial1.available()) Serial1.read(); diag_event_("DIAG RTU LISTEN", rtu_listening_ ? "enabled_by_web" : "paused_by_web"); ESP_LOGI("modbus_gateway", "RTU listener %s", rtu_listening_ ? "enabled" : "paused"); web_.send(200, "application/json", String("{\"listening\":") + (rtu_listening_ ? "true}" : "false}")); });
     web_.on("/manual", HTTP_POST, [this]() { this->manual_request_(); });
     web_.onNotFound([this]() { web_.send(404, "text/plain", "Not found"); });
     web_.begin();
@@ -123,9 +155,15 @@ class ModbusGateway : public Component {
 
   void loop() override {
     const uint32_t loop_started_us = micros();
+    diag_loop_gap_(loop_started_us);
+    ++diag_loop_count_;
     report_wifi_disconnect_diag_();
+    report_wifi_associated_diag_();
     report_ip_lost_diag_();
+    report_ip_acquired_diag_();
+    uint32_t diag_stage_started_us = micros();
     web_.handleClient();
+    diag_stage_sample_(DiagStage::Web, uint32_t(micros() - diag_stage_started_us));
     // Do not start another Modbus request after a Web configuration save.
     // The active asynchronous TCP/UDP client transaction may still finish.
     if (config_reboot_pending_) {
@@ -136,25 +174,35 @@ class ModbusGateway : public Component {
       if (client_txn_.state == ClientTxnState::IDLE &&
           uint32_t(millis() - config_reboot_requested_ms_) >= 1500U) {
         ESP_LOGI("modbus_gateway", "Restarting with saved configuration between transactions.");
+        diag_event_("DIAG REBOOT", "config save triggered reboot after transaction");
         close_tcp_client_diagnostic_("config_reboot");
         stop_tcp_clients_();
         tcp_server_.stop();
         ESP.restart();
       }
+      diag_loop_end_us_ = micros();
       return;
     }
+    diag_stage_started_us = micros();
     if (tcp_mode_ == "SERVER") {
       if (transport_ == "UDP") handle_udp_server_();
       else handle_tcp_server_();
+      diag_stage_sample_(DiagStage::Network, uint32_t(micros() - diag_stage_started_us));
     } else if (tcp_mode_ == "CLIENT") {
       // Advance pending TCP transactions without waiting for the remote server.
       // This keeps the ESPHome loop responsive while a Modbus TCP reply is in flight.
       if (transport_ == "UDP") process_udp_client_transaction_();
       else process_client_transaction_();
+      diag_tcp_wait_watch_();
+      diag_stage_sample_(DiagStage::Network, uint32_t(micros() - diag_stage_started_us));
       if (rtu_listening_) {
+        diag_stage_started_us = micros();
+        const int fifo_before = Serial1.available();
+        size_t drained = 0U;
         bool rx_overflow = false;
         while (Serial1.available()) {
           uint8_t b = uint8_t(Serial1.read());
+          ++drained;
           // Bound the pending RTU input buffer if a master keeps transmitting
           // while an earlier request is still waiting for its TCP response.
           if (rx_.size() < 2048) {
@@ -166,16 +214,23 @@ class ModbusGateway : public Component {
           last_rx_ms_ = millis();
         }
         if (rx_overflow) {
+          ++diag_uart_overflows_;
           rx_.clear();
           rx_timestamps_us_.clear();
           add_event_("RTU ERROR", "Pending RTU input buffer overflow; buffered bytes discarded.");
         }
+        diag_uart_receive_(drained, fifo_before, rx_.size());
+        diag_stage_sample_(DiagStage::UartDrain, uint32_t(micros() - diag_stage_started_us));
+        diag_stage_started_us = micros();
         // Clean up only timed-out CRC-valid reads at the FIFO head, even
         // while an unrelated foreground TCP exchange is still pending.
         purge_expired_rtu_reads_();
         parse_rtu_();
+        diag_stage_sample_(DiagStage::RtuParse, uint32_t(micros() - diag_stage_started_us));
         // Schedule cache refresh after foreground RTU processing, never before it.
+        diag_stage_started_us = micros();
         schedule_client_cache_refresh_();
+        diag_stage_sample_(DiagStage::CacheSchedule, uint32_t(micros() - diag_stage_started_us));
       } else {
         // Keep the UART buffer drained while the RTU listener is paused.
         while (Serial1.available()) Serial1.read();
@@ -184,7 +239,11 @@ class ModbusGateway : public Component {
       }
       // This connection supervisor is independent of the Web frame monitor
       // and of the RTU listening toggle. It never sends a Modbus request.
-      if (transport_ == "TCP") maintain_persistent_tcp_client_();
+      if (transport_ == "TCP") {
+        diag_stage_started_us = micros();
+        maintain_persistent_tcp_client_();
+        diag_stage_sample_(DiagStage::TcpSupervisor, uint32_t(micros() - diag_stage_started_us));
+      }
     } else {
       // Keep the UART buffer drained if the component is in an unknown mode.
       while (Serial1.available()) Serial1.read();
@@ -192,16 +251,43 @@ class ModbusGateway : public Component {
       rx_timestamps_us_.clear();
     }
     const uint32_t loop_duration_us = uint32_t(micros() - loop_started_us);
+    if (loop_duration_us > diag_loop_max_us_) diag_loop_max_us_ = loop_duration_us;
+    if (loop_duration_us > 350000U) ++diag_loop_slow_count_;
     if (loop_duration_us > diagnostics_loop_max_us_) diagnostics_loop_max_us_ = loop_duration_us;
     const uint32_t now_ms = millis();
     if (diagnostics_last_report_ms_ == 0U) diagnostics_last_report_ms_ = now_ms;
     if (uint32_t(now_ms - diagnostics_last_report_ms_) >= 60000U) {
       diagnostics_last_report_ms_ = now_ms;
+      // Periodic summary is stored in the dedicated recorder even under
+      // continuous Modbus traffic. All summary counters are cumulative.
+      char summary[184];
+      snprintf(summary, sizeof(summary),
+               "loop_max=%lu gap_max=%lu slow_loops=%lu gaps=%lu rx_bytes=%lu fifo_peak=%lu tx_max=%lu web_max=%lu tcp_max=%lu",
+               (unsigned long)diag_loop_max_us_, (unsigned long)diag_gap_max_us_,
+               (unsigned long)diag_loop_slow_count_, (unsigned long)diag_gap_count_,
+               (unsigned long)diag_uart_rx_bytes_, (unsigned long)diag_uart_rx_peak_,
+               (unsigned long)diag_uart_tx_max_us_,
+               (unsigned long)diag_stage_[0].max_us,
+               (unsigned long)diag_tcp_connect_max_us_);
+      diag_event_("DIAG HEARTBEAT", summary);
+      char stageDetail[184];
+      snprintf(stageDetail, sizeof(stageDetail),
+               "stage_max_us web=%lu net=%lu uart=%lu parse=%lu cache=%lu supervisor=%lu rtu_pending=%lu fifo_peak=%lu",
+               (unsigned long)diag_stage_[0].max_us,
+               (unsigned long)diag_stage_[1].max_us,
+               (unsigned long)diag_stage_[2].max_us,
+               (unsigned long)diag_stage_[3].max_us,
+               (unsigned long)diag_stage_[4].max_us,
+               (unsigned long)diag_stage_[5].max_us,
+               (unsigned long)diag_rtu_pending_peak_,
+               (unsigned long)diag_uart_rx_peak_);
+      diag_event_("DIAG STAGES", stageDetail);
       add_event_("PERF", String("Heap free=") + String(ESP.getFreeHeap()) +
                  " B; max alloc=" + String(ESP.getMaxAllocHeap()) +
                  " B; loop max=" + String(diagnostics_loop_max_us_) + " us.");
       diagnostics_loop_max_us_ = 0U;
     }
+    diag_loop_end_us_ = micros();
   }
 
   float get_setup_priority() const override { return setup_priority::AFTER_WIFI; }
@@ -210,6 +296,18 @@ class ModbusGateway : public Component {
   // ESPHome status is diagnostic; only the ESP-IDF STA association and
   // assigned IPv4 allow connections to the remote Modbus server.
   // Cross-task event handler: no logging, allocation or network operations.
+  static void on_sta_connected_diag_(void *ctx, esp_event_base_t base,
+                                     int32_t event_id, void *) {
+    if (!ctx || base != WIFI_EVENT || event_id != WIFI_EVENT_STA_CONNECTED) return;
+    auto *self = static_cast<ModbusGateway *>(ctx);
+    __atomic_add_fetch(&self->wifi_assoc_event_count_, uint32_t(1), __ATOMIC_RELEASE);
+  }
+  static void on_sta_got_ip_diag_(void *ctx, esp_event_base_t base,
+                                  int32_t event_id, void *) {
+    if (!ctx || base != IP_EVENT || event_id != IP_EVENT_STA_GOT_IP) return;
+    auto *self = static_cast<ModbusGateway *>(ctx);
+    __atomic_add_fetch(&self->ip_got_event_count_, uint32_t(1), __ATOMIC_RELEASE);
+  }
   static void on_sta_disconnected_diag_(void *ctx, esp_event_base_t base,
                                         int32_t event_id, void *event_data) {
     if (!ctx || base != WIFI_EVENT || event_id != WIFI_EVENT_STA_DISCONNECTED ||
@@ -225,6 +323,29 @@ class ModbusGateway : public Component {
     if (!ctx || base != IP_EVENT || event_id != IP_EVENT_STA_LOST_IP) return;
     auto *self = static_cast<ModbusGateway *>(ctx);
     __atomic_add_fetch(&self->ip_lost_event_count_, uint32_t(1), __ATOMIC_RELEASE);
+  }
+  void report_wifi_associated_diag_() {
+    const uint32_t count = __atomic_load_n(&wifi_assoc_event_count_, __ATOMIC_ACQUIRE);
+    if (count == wifi_assoc_reported_) return;
+    const uint32_t delta = count - wifi_assoc_reported_;
+    wifi_assoc_reported_ = count;
+    const StationLinkState sta = station_link_state_();
+    add_event_("WIFI STA ASSOCIATED", String("count=") + String(count) +
+               "; new=" + String(delta) +
+               "; driver_assoc=" + (sta.associated ? "yes" : "no") +
+               "; sta_ipv4=" + (sta.has_ipv4 ? "yes" : "no") + ".");
+  }
+  void report_ip_acquired_diag_() {
+    const uint32_t count = __atomic_load_n(&ip_got_event_count_, __ATOMIC_ACQUIRE);
+    if (count == ip_got_reported_) return;
+    const uint32_t delta = count - ip_got_reported_;
+    ip_got_reported_ = count;
+    const StationLinkState sta = station_link_state_();
+    add_event_("WIFI STA GOT IP", String("count=") + String(count) +
+               "; new=" + String(delta) +
+               "; ipv4=" + station_ip_text_(sta) +
+               "; driver_assoc=" + (sta.associated ? "yes" : "no") +
+               "; sta_ipv4=" + (sta.has_ipv4 ? "yes" : "no") + ".");
   }
   void report_ip_lost_diag_() {
     const uint32_t count = __atomic_load_n(&ip_lost_event_count_, __ATOMIC_ACQUIRE);
@@ -307,6 +428,386 @@ class ModbusGateway : public Component {
   uint32_t last_background_refresh_ms_{0};
   uint32_t background_refresh_started_{0};
   uint32_t background_refresh_started_ms_{0};
+
+  // Independent diagnostic flight recorder, intentionally separate from RTU
+  // frame capture (frame logging can overwrite 256 entries in ~10 seconds).
+  // All writes are on the ESPHome component loop; Wi-Fi callbacks only update
+  // atomic counters and are never allowed to touch this ring or TCP sockets.
+  struct DiagRecord {
+    uint64_t epoch_ms{0};
+    uint32_t uptime_ms{0};
+    char tag[24]{};
+    char message[184]{};
+  };
+  static constexpr size_t kDiagCapacity = 128U;
+  DiagRecord *diag_records_{nullptr};   // ~28 KB PSRAM, allocated once.
+  uint16_t diag_head_{0}, diag_count_{0};
+  uint32_t diag_overwritten_{0};
+  uint32_t diag_loop_end_us_{0}, diag_loop_max_us_{0}, diag_gap_max_us_{0};
+  uint32_t diag_loop_count_{0}, diag_loop_slow_count_{0}, diag_gap_count_{0};
+  uint32_t diag_last_gap_msg_ms_{0}, diag_last_stage_msg_ms_{0};
+  uint32_t diag_last_tcp_wait_msg_ms_{0}, diag_last_uart_msg_ms_{0};
+  uint32_t diag_last_cache_msg_ms_{0};
+  uint32_t diag_last_summary_ms_{0};
+  enum class DiagStage : uint8_t { Web, Network, UartDrain, RtuParse,
+                                   CacheSchedule, TcpSupervisor, Count };
+  struct StageMeter {
+    uint32_t max_us{0};
+    uint32_t calls{0};
+    uint32_t over_budget{0};
+  };
+  StageMeter diag_stage_[static_cast<size_t>(DiagStage::Count)]{};
+  uint32_t diag_uart_rx_bytes_{0}, diag_uart_rx_peak_{0};
+  uint32_t diag_rtu_pending_peak_{0}, diag_uart_overflows_{0};
+  uint32_t diag_uart_tx_count_{0}, diag_uart_tx_max_us_{0};
+  uint32_t diag_uart_tx_late_count_{0}, diag_uart_tx_bytes_{0};
+  uint32_t diag_uart_buffered_frames_{0}, diag_rtu_rx_max_wait_us_{0};
+  uint32_t diag_tcp_connect_max_us_{0}, diag_tcp_connect_slow_count_{0};
+  uint32_t diag_tcp_wait_max_ms_{0}, diag_tcp_wait_slow_count_{0};
+  uint32_t diag_cache_refresh_max_ms_{0}, diag_cache_refresh_slow_count_{0};
+  uint32_t diag_web_export_max_us_{0};
+  uint32_t diag_web_frames_polls_{0};
+  uint32_t diag_web_frames_last_ms_{0};
+  uint32_t diag_web_frames_gap_max_ms_{0};
+  uint32_t diag_web_frames_slow_gap_count_{0};
+  uint32_t diag_uart_rx_last_ms_{0};
+  uint32_t diag_uart_rx_gap_max_ms_{0};
+  uint32_t diag_uart_rx_gap_count_{0};
+  uint32_t diag_last_rx_gap_log_ms_{0};
+  uint32_t diag_tcp_wait_reported_tid_{0};
+  bool diag_tcp_wait_reported_background_{false};
+  uint32_t diag_tcp_wait_reported_at_us_{0};
+
+  static const char *diag_stage_name_(DiagStage stage) {
+    switch (stage) {
+      case DiagStage::Web: return "web";
+      case DiagStage::Network: return "tcp_processing";
+      case DiagStage::UartDrain: return "uart_drain";
+      case DiagStage::RtuParse: return "rtu_parse_tx";
+      case DiagStage::CacheSchedule: return "cache_schedule";
+      case DiagStage::TcpSupervisor: return "tcp_supervisor";
+      default: return "unknown";
+    }
+  }
+  static bool diag_is_important_event_(const char *tag) {
+    return strcmp(tag, "TCP CLOSE") == 0 || strcmp(tag, "TCP OPEN") == 0 ||
+        strcmp(tag, "TCP ERROR") == 0 || strcmp(tag, "TCP RETRY") == 0 ||
+        strcmp(tag, "TCP DOWN") == 0 || strcmp(tag, "TCP RESTORED") == 0 ||
+        strcmp(tag, "TCP OFFLINE") == 0 || strcmp(tag, "TCP WARN") == 0 ||
+        strcmp(tag, "WIFI STA DOWN") == 0 || strcmp(tag, "WIFI STA IP LOST") == 0 ||
+        strcmp(tag, "WIFI STA ASSOCIATED") == 0 || strcmp(tag, "WIFI STA GOT IP") == 0 ||
+        strcmp(tag, "WIFI STATUS") == 0 || strcmp(tag, "RTU DEADLINE") == 0 ||
+        strcmp(tag, "RTU EXPIRED") == 0 || strcmp(tag, "RTU ERROR") == 0 ||
+        strcmp(tag, "CRC ERROR") == 0 || strcmp(tag, "CACHE REFRESH ERROR") == 0 ||
+        strcmp(tag, "ERROR SILENT") == 0 || strcmp(tag, "CONFIG") == 0;
+  }
+  void diag_event_(const char *tag, const char *message) {
+    if (!diag_records_) return;
+    DiagRecord &rec = diag_records_[diag_head_];
+    rec.epoch_ms = wall_clock_ms_();
+    rec.uptime_ms = millis();
+    snprintf(rec.tag, sizeof(rec.tag), "%s", tag ? tag : "DIAG");
+    snprintf(rec.message, sizeof(rec.message), "%s", message ? message : "");
+    diag_head_ = uint16_t((diag_head_ + 1U) % kDiagCapacity);
+    if (diag_count_ < kDiagCapacity) ++diag_count_;
+    else ++diag_overwritten_;
+  }
+  void diag_stage_sample_(DiagStage stage, uint32_t elapsed_us) {
+    StageMeter &m = diag_stage_[static_cast<size_t>(stage)];
+    ++m.calls;
+    if (elapsed_us > m.max_us) m.max_us = elapsed_us;
+    // TX of 97 registers at 9600 baud normally takes ~210ms; do not
+    // misclassify that expected RTU transmission as a TCP or web stall.
+    const uint32_t budget_us =
+        stage == DiagStage::RtuParse ? 350000U :
+        stage == DiagStage::Web ? 60000U :
+        stage == DiagStage::Network ? 120000U :
+        stage == DiagStage::TcpSupervisor ? 120000U : 60000U;
+    if (elapsed_us <= budget_us) return;
+    ++m.over_budget;
+    const uint32_t now = millis();
+    if (diag_last_stage_msg_ms_ && uint32_t(now - diag_last_stage_msg_ms_) < 3000U) return;
+    diag_last_stage_msg_ms_ = now ? now : 1U;
+    char line[184];
+    snprintf(line, sizeof(line),
+             "stage=%s duration_us=%lu budget_us=%lu tcp_state=%u background=%u rtu_buffer=%u uart_avail=%d",
+             diag_stage_name_(stage), (unsigned long)elapsed_us,
+             (unsigned long)budget_us, unsigned(client_txn_.state),
+             unsigned(client_txn_.background_refresh), unsigned(rx_.size()),
+             Serial1.available());
+    diag_event_("DIAG STAGE SLOW", line);
+  }
+  void diag_loop_gap_(uint32_t now_us) {
+    if (!diag_loop_end_us_) return;
+    const uint32_t gap_us = uint32_t(now_us - diag_loop_end_us_);
+    if (gap_us > diag_gap_max_us_) diag_gap_max_us_ = gap_us;
+    if (gap_us < 100000U) return;
+    ++diag_gap_count_;
+    const uint32_t now = millis();
+    if (gap_us < 250000U || (diag_last_gap_msg_ms_ &&
+        uint32_t(now - diag_last_gap_msg_ms_) < 3000U)) return;
+    diag_last_gap_msg_ms_ = now ? now : 1U;
+    char line[184];
+    snprintf(line, sizeof(line),
+             "outside_loop_us=%lu last_loop_us=%lu uart_pending=%d rtu_buffer=%u tcp_state=%u refresh=%u wifi_events=%lu",
+             (unsigned long)gap_us, (unsigned long)diag_loop_max_us_,
+             Serial1.available(), unsigned(rx_.size()), unsigned(client_txn_.state),
+             unsigned(client_txn_.background_refresh),
+             (unsigned long)__atomic_load_n(&wifi_disconnect_event_count_, __ATOMIC_RELAXED));
+    diag_event_("DIAG LOOP GAP", line);
+  }
+  void diag_uart_receive_(size_t count, int fifo_before, size_t queued) {
+    if (count > 0U) {
+      const uint32_t nowRx = millis();
+      if (diag_uart_rx_last_ms_) {
+        const uint32_t gapMs = uint32_t(nowRx - diag_uart_rx_last_ms_);
+        if (gapMs > diag_uart_rx_gap_max_ms_) diag_uart_rx_gap_max_ms_ = gapMs;
+        if (gapMs > 500U) {
+          ++diag_uart_rx_gap_count_;
+          if (gateway_diagnostic_policy::interval_elapsed(
+                  nowRx, diag_last_rx_gap_log_ms_, 5000U)) {
+            diag_last_rx_gap_log_ms_ = nowRx ? nowRx : 1U;
+            char message[160];
+            snprintf(message, sizeof(message),
+                     "since_previous_uart_read_ms=%lu bytes_now=%u fifo_before=%d pending=%u browser_polls=%lu",
+                     (unsigned long)gapMs, unsigned(count), fifo_before,
+                     unsigned(queued), (unsigned long)diag_web_frames_polls_);
+            diag_event_("DIAG RTU RX GAP", message);
+          }
+        }
+      }
+      diag_uart_rx_last_ms_ = nowRx ? nowRx : 1U;
+    }
+    diag_uart_rx_bytes_ += uint32_t(count);
+    if (fifo_before > 0 && uint32_t(fifo_before) > diag_uart_rx_peak_)
+      diag_uart_rx_peak_ = uint32_t(fifo_before);
+    if (queued > diag_rtu_pending_peak_) diag_rtu_pending_peak_ = uint32_t(queued);
+    const uint32_t now = millis();
+    if ((fifo_before < 64 && queued < 128U) || (diag_last_uart_msg_ms_ &&
+        uint32_t(now - diag_last_uart_msg_ms_) < 5000U)) return;
+    diag_last_uart_msg_ms_ = now ? now : 1U;
+    char line[160];
+    snprintf(line, sizeof(line),
+             "fifo_before=%d drained=%u rtu_queued=%u tcp_state=%u bg=%u",
+             fifo_before, unsigned(count), unsigned(queued),
+             unsigned(client_txn_.state), unsigned(client_txn_.background_refresh));
+    diag_event_("DIAG UART BACKLOG", line);
+  }
+  void diag_uart_transmit_(size_t bytes, uint32_t elapsed_us, const char *origin) {
+    ++diag_uart_tx_count_;
+    diag_uart_tx_bytes_ += uint32_t(bytes);
+    if (elapsed_us > diag_uart_tx_max_us_) diag_uart_tx_max_us_ = elapsed_us;
+    const uint32_t bits = 1U + uint32_t(cfg_data_bits_) +
+         uint32_t(cfg_parity_ != "NONE") + uint32_t(cfg_stop_bits_);
+    const uint32_t wire_us = gateway_diagnostic_policy::rtu_wire_time_us(
+         bytes, cfg_baud_, bits);
+    if (!gateway_diagnostic_policy::unexpected_uart_tx(elapsed_us, wire_us)) return;
+    ++diag_uart_tx_late_count_;
+    const uint32_t now = millis();
+    if (diag_last_uart_msg_ms_ &&
+        uint32_t(now - diag_last_uart_msg_ms_) < 3000U) return;
+    diag_last_uart_msg_ms_ = now ? now : 1U;
+    char line[152];
+    snprintf(line, sizeof(line),
+             "origin=%s bytes=%u duration_us=%lu wire_expected_us=%lu extra_us=%lu",
+             origin, unsigned(bytes), (unsigned long)elapsed_us,
+             (unsigned long)wire_us, (unsigned long)(elapsed_us - wire_us));
+    diag_event_("DIAG UART TX SLOW", line);
+  }
+  void diag_tcp_connect_(uint32_t elapsed_us, bool ok, const char *origin) {
+    if (elapsed_us > diag_tcp_connect_max_us_) diag_tcp_connect_max_us_ = elapsed_us;
+    if (elapsed_us < 100000U) return;
+    ++diag_tcp_connect_slow_count_;
+    char line[160];
+    snprintf(line, sizeof(line),
+             "origin=%s ok=%u connect_us=%lu fd=%d rtu_pending=%u",
+             origin, unsigned(ok), (unsigned long)elapsed_us, client_.fd(),
+             unsigned(rx_.size()));
+    diag_event_("DIAG TCP CONNECT", line);
+  }
+  void diag_tcp_wait_watch_() {
+    if (client_txn_.state == ClientTxnState::IDLE) return;
+    const uint32_t waiting_ms = uint32_t(micros() - client_txn_.response_started_us) / 1000U;
+    if (waiting_ms > diag_tcp_wait_max_ms_) diag_tcp_wait_max_ms_ = waiting_ms;
+    if (waiting_ms < 1000U) return;
+    // One event per transaction; distinguish a TID reused after wrap by
+    // response start timestamp as well.
+    if (diag_tcp_wait_reported_tid_ == uint32_t(client_txn_.transaction_id) &&
+        diag_tcp_wait_reported_at_us_ == client_txn_.response_started_us) return;
+    ++diag_tcp_wait_slow_count_;
+    diag_tcp_wait_reported_tid_ = uint32_t(client_txn_.transaction_id);
+    diag_tcp_wait_reported_at_us_ = client_txn_.response_started_us;
+    char line[184];
+    snprintf(line, sizeof(line),
+             "wait_ms=%lu tid=%u fc=%u addr=%u state=%u mbap=%u pdu=%u/%u bg=%u rtu_queued=%u",
+             (unsigned long)waiting_ms, unsigned(client_txn_.transaction_id),
+             client_txn_.request_pdu.empty() ? 0U : unsigned(client_txn_.request_pdu[0]),
+             client_txn_.request_pdu.size() >= 3 ?
+             unsigned((uint16_t(client_txn_.request_pdu[1]) << 8) |
+                        client_txn_.request_pdu[2]) : 0U,
+             unsigned(client_txn_.state), unsigned(client_txn_.mbap_received),
+             unsigned(client_txn_.response_received),
+             unsigned(client_txn_.expected_pdu_length),
+             unsigned(client_txn_.background_refresh), unsigned(rx_.size()));
+    diag_event_("DIAG TCP WAIT", line);
+  }
+  void diag_cache_refresh_(uint32_t duration_ms) {
+    if (duration_ms > diag_cache_refresh_max_ms_) diag_cache_refresh_max_ms_ = duration_ms;
+    if (duration_ms < 1000U) return;
+    ++diag_cache_refresh_slow_count_;
+    const uint32_t now = millis();
+    if (diag_last_cache_msg_ms_ &&
+        uint32_t(now - diag_last_cache_msg_ms_) < 5000U) return;
+    diag_last_cache_msg_ms_ = now ? now : 1U;
+    char line[128];
+    snprintf(line, sizeof(line), "refresh_ms=%lu successes=%lu failures=%lu",
+             (unsigned long)duration_ms,
+             (unsigned long)background_refresh_succeeded_,
+             (unsigned long)background_refresh_failed_);
+    diag_event_("DIAG CACHE SLOW", line);
+  }
+  String diag_json_() {
+    String out;
+    out.reserve(2800);
+    const StationLinkState sta = station_link_state_();
+    out = "{\"ok\":true,\"recorder\":";
+    out += diag_records_ ? "true" : "false";
+    out += ",\"stored\":" + String(diag_count_);
+    out += ",\"overwritten\":" + String(diag_overwritten_);
+    out += ",\"loop_count\":" + String(diag_loop_count_);
+    out += ",\"loop_max_us\":" + String(diag_loop_max_us_);
+    out += ",\"outside_loop_max_us\":" + String(diag_gap_max_us_);
+    out += ",\"loop_slow_count\":" + String(diag_loop_slow_count_);
+    out += ",\"loop_gaps_gt100ms\":" + String(diag_gap_count_);
+    out += ",\"uart_rx_bytes\":" + String(diag_uart_rx_bytes_);
+    out += ",\"uart_fifo_peak\":" + String(diag_uart_rx_peak_);
+    out += ",\"rtu_pending_peak\":" + String(diag_rtu_pending_peak_);
+    out += ",\"rtu_overflow\":" + String(diag_uart_overflows_);
+    out += ",\"rtu_buffered_frames\":" + String(diag_uart_buffered_frames_);
+    out += ",\"uart_tx_count\":" + String(diag_uart_tx_count_);
+    out += ",\"uart_tx_bytes\":" + String(diag_uart_tx_bytes_);
+    out += ",\"uart_tx_max_us\":" + String(diag_uart_tx_max_us_);
+    out += ",\"uart_tx_abnormal\":" + String(diag_uart_tx_late_count_);
+    out += ",\"tcp_connect_max_us\":" + String(diag_tcp_connect_max_us_);
+    out += ",\"tcp_connect_slow\":" + String(diag_tcp_connect_slow_count_);
+    out += ",\"tcp_wait_max_ms\":" + String(diag_tcp_wait_max_ms_);
+    out += ",\"tcp_wait_slow\":" + String(diag_tcp_wait_slow_count_);
+    out += ",\"cache_refresh_max_ms\":" + String(diag_cache_refresh_max_ms_);
+    out += ",\"cache_refresh_slow\":" + String(diag_cache_refresh_slow_count_);
+    out += ",\"web_export_max_us\":" + String(diag_web_export_max_us_);
+    out += ",\"frames_poll_count\":" + String(diag_web_frames_polls_);
+    out += ",\"frames_poll_gap_max_ms\":" + String(diag_web_frames_gap_max_ms_);
+    out += ",\"frames_poll_gaps_gt3s\":" + String(diag_web_frames_slow_gap_count_);
+    out += ",\"frames_poll_last_age_ms\":" +
+           String(diag_web_frames_last_ms_ ?
+                  uint32_t(millis() - diag_web_frames_last_ms_) : 0U);
+    out += ",\"rtu_rx_gap_max_ms\":" + String(diag_uart_rx_gap_max_ms_);
+    out += ",\"rtu_rx_gaps_gt500ms\":" + String(diag_uart_rx_gap_count_);
+    out += ",\"rtu_rx_last_age_ms\":" +
+           String(diag_uart_rx_last_ms_ ?
+                  uint32_t(millis() - diag_uart_rx_last_ms_) : 0U);
+    out += ",\"rtu_listening\":" + String(rtu_listening_ ? "true" : "false");
+    out += ",\"frame_log_count\":" + String(log_count_);
+    out += ",\"sta_disconnect_count\":" +
+       String(__atomic_load_n(&wifi_disconnect_event_count_, __ATOMIC_RELAXED));
+    out += ",\"last_sta_reason\":" +
+       String(__atomic_load_n(&wifi_last_disconnect_reason_, __ATOMIC_RELAXED));
+    out += ",\"ip_lost_count\":" +
+       String(__atomic_load_n(&ip_lost_event_count_, __ATOMIC_RELAXED));
+    out += ",\"sta_association_count\":" +
+       String(__atomic_load_n(&wifi_assoc_event_count_, __ATOMIC_RELAXED));
+    out += ",\"sta_got_ip_count\":" +
+       String(__atomic_load_n(&ip_got_event_count_, __ATOMIC_RELAXED));
+    out += ",\"esphome_wifi_flag\":" + String(sta.esphome_connected ? "true" : "false");
+    out += ",\"driver_associated\":" + String(sta.associated ? "true" : "false");
+    out += ",\"sta_has_ipv4\":" + String(sta.has_ipv4 ? "true" : "false");
+    out += ",\"sta_ready\":" + String(sta.ready() ? "true" : "false");
+    out += ",\"sta_rssi_dbm\":" + String(last_sta_rssi_dbm_);
+    out += ",\"tcp_connected\":" + String(client_.connected() ? "true" : "false");
+    out += ",\"tcp_session\":" + String(tcp_diag_current_session_id_);
+    out += ",\"tcp_local_port\":" + String(client_local_port_());
+    out += ",\"tcp_transaction_id\":" + String(client_txn_.transaction_id);
+    out += ",\"tcp_transaction_state\":" + String(unsigned(client_txn_.state));
+    out += ",\"tcp_background_refresh\":" +
+           String(client_txn_.background_refresh ? "true" : "false");
+    out += ",\"rtu_pending_bytes\":" + String(rx_.size());
+    out += ",\"uart_available_bytes\":" + String(Serial1.available());
+    out += ",\"crc_errors\":" + String(crc_error_count_);
+    out += ",\"cache_stale_hits\":" + String(cache_stale_hits_);
+    out += ",\"rtu_expired_reads\":" +
+           String(rtu_expired_queued_reads_ + rtu_expired_foreground_reads_);
+    out += ",\"free_internal\":" +
+       String(heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+    out += ",\"free_psram\":" +
+       String(heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    out += ",\"stages\":{";
+    for (size_t i = 0; i < static_cast<size_t>(DiagStage::Count); ++i) {
+      if (i) out += ",";
+      out += "\"";
+      out += diag_stage_name_(static_cast<DiagStage>(i));
+      out += "\":{\"max_us\":" + String(diag_stage_[i].max_us);
+      out += ",\"calls\":" + String(diag_stage_[i].calls);
+      out += ",\"slow\":" + String(diag_stage_[i].over_budget) + "}";
+    }
+    out += "}}";
+    return out;
+  }
+  void send_diag_text_() {
+    const uint32_t started = micros();
+    web_.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    web_.sendHeader("Cache-Control", "no-store");
+    web_.send(200, "text/plain; charset=utf-8", "");
+    String chunk;
+    chunk.reserve(1600);
+    chunk += "Modbus gateway - independent diagnostic flight recorder\r\n";
+    chunk += "Version: ";
+    chunk += version_.c_str();
+    chunk += "; timezone: ";
+    chunk += timezone_.c_str();
+    chunk += "; events: ";
+    chunk += String(diag_count_);
+    chunk += "; overwritten: ";
+    chunk += String(diag_overwritten_);
+    chunk += "\r\n";
+    chunk += "Source IP:port matches Flow.io peer=IP:port, not TCP sid/fd.\r\n\r\n";
+    if (!diag_records_) chunk += "PSRAM flight recorder allocation unavailable.\r\n";
+    for (size_t i = 0; diag_records_ && i < diag_count_; ++i) {
+      const size_t pos = (diag_head_ + kDiagCapacity - diag_count_ + i) % kDiagCapacity;
+      const DiagRecord &rec = diag_records_[pos];
+      char line[320];
+      char timeText[32]{"NTP-unavailable"};
+      if (rec.epoch_ms) {
+        const time_t seconds = time_t(rec.epoch_ms / 1000ULL);
+        struct tm local{};
+        localtime_r(&seconds, &local);
+        strftime(timeText, sizeof(timeText), "%Y-%m-%d %H:%M:%S", &local);
+      }
+      snprintf(line, sizeof(line),
+               "%s.%03u | uptime=%lu ms | %s | %s\r\n",
+               timeText, unsigned(rec.epoch_ms % 1000ULL),
+               (unsigned long)rec.uptime_ms, rec.tag, rec.message);
+      if (chunk.length() + strlen(line) > 1550U) {
+        web_.sendContent(chunk);
+        chunk = "";
+      }
+      chunk += line;
+    }
+    if (chunk.length()) web_.sendContent(chunk);
+    web_.sendContent("\r\n--- CUMULATIVE COUNTERS (JSON) ---\r\n");
+    web_.sendContent(diag_json_());
+    web_.sendContent("\r\n");
+    web_.sendContent("");
+    const uint32_t elapsed = uint32_t(micros() - started);
+    if (elapsed > diag_web_export_max_us_) diag_web_export_max_us_ = elapsed;
+    if (elapsed > 100000U) {
+      char message[96];
+      snprintf(message, sizeof(message),
+               "path=/diag.txt duration_us=%lu events=%u",
+               (unsigned long)elapsed, unsigned(diag_count_));
+      diag_event_("DIAG WEB EXPORT", message);
+    }
+  }
+
   uint32_t diagnostics_last_report_ms_{0};
   uint32_t diagnostics_loop_max_us_{0};
   uint32_t background_refresh_succeeded_{0};
@@ -336,7 +837,13 @@ class ModbusGateway : public Component {
   uint32_t tcp_diag_next_session_id_{0};
   uint32_t tcp_diag_current_session_id_{0};
   esp_event_handler_instance_t wifi_disconnect_handler_{};
+  esp_event_handler_instance_t wifi_assoc_handler_{};
   esp_event_handler_instance_t ip_lost_handler_{};
+  esp_event_handler_instance_t ip_got_handler_{};
+  uint32_t wifi_assoc_event_count_{0};
+  uint32_t wifi_assoc_reported_{0};
+  uint32_t ip_got_event_count_{0};
+  uint32_t ip_got_reported_{0};
   uint32_t ip_lost_event_count_{0};
   uint32_t ip_lost_reported_{0};
   uint32_t wifi_disconnect_event_count_{0};
@@ -491,6 +998,7 @@ class ModbusGateway : public Component {
   // Store readable diagnostics in the same rolling log shown by the Web UI
   // and included in the frame-capture text export.
   void add_event_(const char *category, const String &message) {
+    if (diag_is_important_event_(category)) diag_event_(category, message.c_str());
     logs_[log_head_] = {String(category), message, millis(), wall_clock_ms_()};
     log_head_ = (log_head_ + 1) % FRAME_LOG_CAPACITY;
     if (log_count_ < FRAME_LOG_CAPACITY) log_count_++;
@@ -663,7 +1171,10 @@ class ModbusGateway : public Component {
     ++tcp_reconnect_attempts_;
     client_.setTimeout(tcp_timeout_ms_);
     client_.setNoDelay(true);
-    if (client_.connect(cfg_host_.c_str(), cfg_port_, kIdleConnectTimeoutMs)) {
+    const uint32_t diagConnectStartedUs = micros();
+    const bool connected = client_.connect(cfg_host_.c_str(), cfg_port_, kIdleConnectTimeoutMs);
+    diag_tcp_connect_(uint32_t(micros() - diagConnectStartedUs), connected, "idle_supervisor");
+    if (connected) {
       client_.setNoDelay(true);
       enable_client_tcp_keepalive_();
       note_tcp_client_open_("idle_supervisor");
@@ -1235,6 +1746,27 @@ class ModbusGateway : public Component {
         rx_timestamps_us_.clear();
       }
       rx_.erase(rx_.begin(), rx_.begin()+n);
+      const uint32_t bitsPerChar = 1U + uint32_t(cfg_data_bits_) +
+          uint32_t(cfg_parity_ != "NONE") + uint32_t(cfg_stop_bits_);
+      const uint32_t wireSpanUs = gateway_diagnostic_policy::rtu_wire_time_us(
+          n - 1U, cfg_baud_, bitsPerChar);
+      if (gateway_diagnostic_policy::likely_uart_buffered(
+              rtu_request_span_us, wireSpanUs)) {
+        ++diag_uart_buffered_frames_;
+        const uint32_t now = millis();
+        if (!diag_last_uart_msg_ms_ ||
+            uint32_t(now - diag_last_uart_msg_ms_) > 10000U) {
+          diag_last_uart_msg_ms_ = now ? now : 1U;
+          char detail[184];
+          snprintf(detail, sizeof(detail),
+                   "bytes=%u measured_us=%lu wire_expected_us=%lu buffered_frames=%lu pending=%u",
+                   unsigned(n), (unsigned long)rtu_request_span_us,
+                   (unsigned long)wireSpanUs,
+                   (unsigned long)diag_uart_buffered_frames_,
+                   unsigned(rx_.size()));
+          diag_event_("DIAG UART BUFFERED", detail);
+        }
+      }
       add_log_("RTU RX", frame.data(), frame.size());
       add_event_("TIMING", String("CLIENT RTU RX first-to-last=") + String(rtu_request_span_us) +
                  " us; bytes=" + String(n) + ".");
@@ -1294,6 +1826,7 @@ class ModbusGateway : public Component {
       if (client_txn_.state != ClientTxnState::IDLE &&
           client_txn_.background_refresh) {
         add_event_("CACHE REFRESH", "Cancelled background read for uncached foreground RTU request.");
+        diag_event_("DIAG PREEMPT", "RTU foreground demand preempted an in-flight background TCP refresh");
         close_tcp_client_diagnostic_("background_preempted");
         reset_client_transaction_();
         ++background_refresh_failed_;
@@ -1440,8 +1973,12 @@ class ModbusGateway : public Component {
                cfg_host_.c_str(), unsigned(cfg_port_), tcp_persistent_ ? "yes" : "no");
       // A background cache refresh must not block the UART/Web task for
       // the full foreground network timeout after a Wi-Fi/TCP outage.
-      if (!client_.connect(cfg_host_.c_str(), cfg_port_,
-                           int32_t(connect_timeout_ms))) {
+      const uint32_t diagConnectStartedUs = micros();
+      const bool connected = client_.connect(cfg_host_.c_str(), cfg_port_,
+                           int32_t(connect_timeout_ms));
+      diag_tcp_connect_(uint32_t(micros() - diagConnectStartedUs), connected,
+                        background_refresh ? "background_refresh" : "foreground");
+      if (!connected) {
         client_txn_.connect_us = micros() - connect_started_us;
         add_event_("TCP ERROR", String("Connection to ") + target + " failed after " +
                    String(client_txn_.connect_us / 1000) + " ms (connect() returned false).");
@@ -1542,11 +2079,13 @@ class ModbusGateway : public Component {
       if (success && cacheable_read && cache_client_enabled_) {
         cache_store_(CACHE_DIRECTION_CLIENT, unit_id, request_pdu, response_pdu);
         ++background_refresh_succeeded_;
+        diag_cache_refresh_(uint32_t(millis() - background_refresh_started_ms_));
         add_event_("CACHE REFRESH OK", String("Validated TCP refresh stored; Unit ID=") +
                    String(unit_id) + "; Function=" + String(request_pdu[0]) +
                    "; duration=" + String(uint32_t(millis() - background_refresh_started_ms_)) + " ms.");
       } else {
         ++background_refresh_failed_;
+        diag_cache_refresh_(uint32_t(millis() - background_refresh_started_ms_));
         add_event_("CACHE REFRESH ERROR", String("TCP refresh returned an exception or non-cacheable response; duration=") +
                    String(uint32_t(millis() - background_refresh_started_ms_)) + " ms; no RTU TX.");
       }
@@ -1808,7 +2347,10 @@ class ModbusGateway : public Component {
                station.esphome_connected ? "up" : "down", local_ip.c_str(),
                cfg_host_.c_str(), unsigned(cfg_port_), tcp_persistent_ ? "yes" : "no");
       const uint32_t connect_started_us = micros();
-      if (!client_.connect(cfg_host_.c_str(), cfg_port_)) {
+      const uint32_t diagConnectStartedUs = micros();
+      const bool connected = client_.connect(cfg_host_.c_str(), cfg_port_);
+      diag_tcp_connect_(uint32_t(micros() - diagConnectStartedUs), connected, "manual");
+      if (!connected) {
         connect_us = micros() - connect_started_us;
         const uint32_t elapsed_ms = connect_us / 1000;
         add_event_("TCP ERROR", String("Connection to ") + target + " failed after " + String(elapsed_ms) + " ms (connect() returned false).");
@@ -1923,7 +2465,9 @@ class ModbusGateway : public Component {
     Serial1.flush();
     delayMicroseconds(100);
     if (de_re_gpio_ >= 0) digitalWrite(de_re_gpio_, LOW);
-    return micros() - tx_started_us;
+    const uint32_t elapsed = uint32_t(micros() - tx_started_us);
+    diag_uart_transmit_(frame.size(), elapsed, "client_rtu_response");
+    return elapsed;
   }
 
   void clear_tcp_request_(TcpClientSlot &slot) {
@@ -2067,10 +2611,12 @@ class ModbusGateway : public Component {
       if (de_re_gpio_ >= 0) digitalWrite(de_re_gpio_, HIGH);
       delayMicroseconds(100);
       add_log_("RTU TX", rtu.data(), rtu.size());
+      const uint32_t diagRtuTxStartedUs = micros();
       Serial1.write(rtu.data(), rtu.size());
       Serial1.flush();
       delayMicroseconds(100);
       if (de_re_gpio_ >= 0) digitalWrite(de_re_gpio_, LOW);
+      diag_uart_transmit_(rtu.size(), uint32_t(micros() - diagRtuTxStartedUs), "udp_rtu");
 
       uint8_t response[260];
       uint32_t first_delay = 0, response_span = 0;
@@ -2354,6 +2900,7 @@ class ModbusGateway : public Component {
     delayMicroseconds(100);
     if (de_re_gpio_ >= 0) digitalWrite(de_re_gpio_, LOW);
     rtu_tx_us = micros() - rtu_tx_started_us;
+    diag_uart_transmit_(rtu.size(), rtu_tx_us, "server_rtu");
 
     uint8_t response[260];
     const uint32_t rtu_wait_started_us = micros();
@@ -3188,6 +3735,25 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
   }
 
   String frames_json_() {
+    const uint32_t diagRenderStartedUs = micros();
+    const uint32_t diagPollAtMs = millis();
+    ++diag_web_frames_polls_;
+    if (diag_web_frames_last_ms_) {
+      const uint32_t gapMs = uint32_t(diagPollAtMs - diag_web_frames_last_ms_);
+      if (gapMs > diag_web_frames_gap_max_ms_) diag_web_frames_gap_max_ms_ = gapMs;
+      if (gapMs > 3000U) {
+        ++diag_web_frames_slow_gap_count_;
+        char message[152];
+        snprintf(message, sizeof(message),
+                 "frames_page_poll_gap_ms=%lu poll_count=%lu uart_rx_bytes=%lu rtu_listening=%u",
+                 (unsigned long)gapMs,
+                 (unsigned long)diag_web_frames_polls_,
+                 (unsigned long)diag_uart_rx_bytes_,
+                 unsigned(rtu_listening_));
+        diag_event_("DIAG MONITOR GAP", message);
+      }
+    }
+    diag_web_frames_last_ms_ = diagPollAtMs ? diagPollAtMs : 1U;
     String out;
     out.reserve(12288);
     out = "{\"frames\":[";
@@ -3198,11 +3764,20 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
       out+="{\"time\":\""+format_frame_time_(logs_[idx])+"\",\"dir\":\""+logs_[idx].direction+"\",\"hex\":\""+logs_[idx].hex+"\"}";
     }
     out+="]}";
+    const uint32_t renderUs = uint32_t(micros() - diagRenderStartedUs);
+    if (renderUs > 50000U) {
+      char detail[128];
+      snprintf(detail, sizeof(detail),
+               "path=/frames json_build_us=%lu entries=%u",
+               (unsigned long)renderUs, unsigned(visible));
+      diag_event_("DIAG WEB RENDER", detail);
+    }
     return out;
   }
 
   // Export in bounded chunks: no full-history HTTP String allocation.
   void send_frames_text_() {
+    const uint32_t diagWebExportStartedUs = micros();
     web_.setContentLength(CONTENT_LENGTH_UNKNOWN);
     web_.send(200, "text/plain; charset=utf-8", "");
     String chunk;
@@ -3233,6 +3808,15 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
     }
     if (chunk.length()) web_.sendContent(chunk);
     web_.sendContent("");
+    const uint32_t diagWebExportUs = uint32_t(micros() - diagWebExportStartedUs);
+    if (diagWebExportUs > diag_web_export_max_us_) diag_web_export_max_us_ = diagWebExportUs;
+    if (diagWebExportUs > 100000U) {
+      char detail[128];
+      snprintf(detail, sizeof(detail),
+               "path=/frames.txt export_us=%lu entries=%u",
+               (unsigned long)diagWebExportUs, unsigned(log_count_));
+      diag_event_("DIAG WEB EXPORT", detail);
+    }
   }
 
   static String hex_bytes_(const std::vector<uint8_t> &data) {
