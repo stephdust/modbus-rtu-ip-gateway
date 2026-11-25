@@ -12,6 +12,8 @@
 #include "modbus_gateway_policy.h"
 #include "tcp_connection_policy.h"
 #include "gateway_diagnostic_policy.h"
+#include "deferred_rtu_policy.h"
+#include "frame_log_policy.h"
 #include <lwip/sockets.h>
 #include <lwip/tcp.h>
 // ESP-IDF and Arduino WebServer both define HTTP_ANY; this component does not use it.
@@ -87,6 +89,12 @@ class ModbusGateway : public Component {
         &ModbusGateway::on_sta_got_ip_diag_, this, &ip_got_handler_);
     if (gotIpDiagStatus != ESP_OK)
       ESP_LOGW("modbus_gateway", "IPv4 acquired diag registration failed (%d)", int(gotIpDiagStatus));
+    // Fixed-size frame log in PSRAM: replaces 256 persistent Arduino String
+    // pairs, whose per-frame heap allocations caused internal fragmentation.
+    frame_logs_ = static_cast<FrameLog *>(heap_caps_calloc(
+        FRAME_LOG_CAPACITY, sizeof(FrameLog), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (!frame_logs_)
+      ESP_LOGW("modbus_gateway", "Frame capture PSRAM allocation failed; frame monitor disabled");
     // Dedicated PSRAM flight recorder: rare events survive the 256-frame
     // rolling capture that is overwritten by continuous RTU traffic.
     diag_records_ = static_cast<DiagRecord *>(heap_caps_calloc(
@@ -125,7 +133,7 @@ class ModbusGateway : public Component {
     web_.on("/img/frame-diagnostics.jpg", HTTP_GET, [this]() { this->serve_image_(FRAME_IMG, "image/jpeg"); });
     web_.on("/save", HTTP_POST, [this]() { this->save_config_(); });
     web_.on("/reboot", HTTP_POST, [this]() { this->reboot_gateway_(); });
-    web_.on("/frames", HTTP_GET, [this]() { web_.send(200, "application/json", this->frames_json_()); });
+    web_.on("/frames", HTTP_GET, [this]() { this->send_frames_json_(); });
     web_.on("/cache-stats", HTTP_GET, [this]() { web_.sendHeader("Cache-Control", "no-store"); web_.send(200, "application/json", this->cache_stats_json_()); });
     web_.on("/connections", HTTP_GET, [this]() { web_.sendHeader("Cache-Control", "no-store"); web_.send(200, "application/json", this->connections_json_()); });
     web_.on("/diag.txt", HTTP_GET, [this]() { this->send_diag_text_(); });
@@ -171,7 +179,9 @@ class ModbusGateway : public Component {
         if (transport_ == "UDP") process_udp_client_transaction_();
         else process_client_transaction_();
       }
-      if (client_txn_.state == ClientTxnState::IDLE &&
+      if (client_txn_.state == ClientTxnState::IDLE)
+          service_deferred_foreground_();
+        if (client_txn_.state == ClientTxnState::IDLE && !deferred_fg_.active &&
           uint32_t(millis() - config_reboot_requested_ms_) >= 1500U) {
         ESP_LOGI("modbus_gateway", "Restarting with saved configuration between transactions.");
         diag_event_("DIAG REBOOT", "config save triggered reboot after transaction");
@@ -193,6 +203,7 @@ class ModbusGateway : public Component {
       // This keeps the ESPHome loop responsive while a Modbus TCP reply is in flight.
       if (transport_ == "UDP") process_udp_client_transaction_();
       else process_client_transaction_();
+      service_deferred_foreground_();
       diag_tcp_wait_watch_();
       diag_stage_sample_(DiagStage::Network, uint32_t(micros() - diag_stage_started_us));
       if (rtu_listening_) {
@@ -708,6 +719,9 @@ class ModbusGateway : public Component {
                   uint32_t(millis() - diag_uart_rx_last_ms_) : 0U);
     out += ",\"rtu_listening\":" + String(rtu_listening_ ? "true" : "false");
     out += ",\"frame_log_count\":" + String(log_count_);
+    out += ",\"frame_log_psram\":" + String(frame_logs_ ? "true" : "false");
+    out += ",\"frame_log_psram_bytes\":" +
+           String(frame_logs_ ? FRAME_LOG_CAPACITY * sizeof(FrameLog) : 0U);
     out += ",\"sta_disconnect_count\":" +
        String(__atomic_load_n(&wifi_disconnect_event_count_, __ATOMIC_RELAXED));
     out += ",\"last_sta_reason\":" +
@@ -736,6 +750,11 @@ class ModbusGateway : public Component {
     out += ",\"cache_stale_hits\":" + String(cache_stale_hits_);
     out += ",\"rtu_expired_reads\":" +
            String(rtu_expired_queued_reads_ + rtu_expired_foreground_reads_);
+    out += ",\"deferred_foreground_count\":" + String(deferred_fg_count_);
+    out += ",\"deferred_foreground_dispatched\":" + String(deferred_fg_dispatched_);
+    out += ",\"deferred_read_expired\":" + String(deferred_fg_read_expired_);
+    out += ",\"deferred_max_wait_ms\":" + String(deferred_fg_max_wait_ms_);
+    out += ",\"deferred_active\":" + String(deferred_fg_.active ? "true" : "false");
     out += ",\"free_internal\":" +
        String(heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
     out += ",\"free_psram\":" +
@@ -911,6 +930,22 @@ class ModbusGateway : public Component {
     bool reconnect_retry_used{false};  // Only one replay for FC03/FC04 on reused TCP sockets.
   };
   ClientTransaction client_txn_;
+  // Bounded single foreground request waiting for a previous background
+  // TCP MBAP/PDU to be fully drained. FIFO preserves later RTU requests.
+  struct DeferredForeground {
+    bool active{false};
+    uint8_t unit_id{0};
+    uint8_t function{0};
+    bool cacheable_read{false};
+    uint16_t size{0};
+    uint32_t received_us{0};
+    uint8_t pdu[253]{};
+  };
+  DeferredForeground deferred_fg_{};
+  uint32_t deferred_fg_count_{0};
+  uint32_t deferred_fg_dispatched_{0};
+  uint32_t deferred_fg_read_expired_{0};
+  uint32_t deferred_fg_max_wait_ms_{0};
   std::vector<uint8_t> cached_response_tmp_;
 
   struct TcpClientSlot {
@@ -961,7 +996,14 @@ class ModbusGateway : public Component {
   };
   ResponseCacheEntry response_cache_[RESPONSE_CACHE_CAPACITY];
 
-  struct FrameLog { String direction; String hex; uint32_t when; uint64_t epoch_ms; };
+  // 256 * ~824B uses ~211 KiB PSRAM, not internal heap. Never allocate
+  // an Arduino String per log entry, and preserve full 260-byte RTU frames.
+  struct FrameLog {
+    char direction[32]{};
+    char hex[784]{};
+    uint32_t when{0};
+    uint64_t epoch_ms{0};
+  };
   static uint64_t wall_clock_ms_() {
     struct timeval tv{};
     if (gettimeofday(&tv, nullptr) != 0 || tv.tv_sec < 1700000000) return 0;
@@ -978,30 +1020,32 @@ class ModbusGateway : public Component {
     snprintf(result, sizeof(result), "%s.%03u", buffer, unsigned(entry.epoch_ms % 1000ULL));
     return String(result);
   }
-  FrameLog logs_[FRAME_LOG_CAPACITY];
+  FrameLog *frame_logs_{nullptr};
   size_t log_head_{0};
   size_t log_count_{0};
 
-  void add_log_(const char *direction, const uint8_t *data, size_t len) {
-    String h;
-    char b[4];
-    for (size_t i=0;i<len;i++) {
-      snprintf(b, sizeof(b), "%02X", data[i]);
-      if (i) h += " ";
-      h += b;
-    }
-    logs_[log_head_] = {String(direction), h, millis(), wall_clock_ms_()};
-    log_head_ = (log_head_ + 1) % FRAME_LOG_CAPACITY;
-    if (log_count_ < FRAME_LOG_CAPACITY) log_count_++;
+  void frame_log_advance_(FrameLog &entry, const char *direction) {
+    snprintf(entry.direction, sizeof(entry.direction), "%s", direction ? direction : "");
+    entry.when = millis();
+    entry.epoch_ms = wall_clock_ms_();
+    log_head_ = (log_head_ + 1U) % FRAME_LOG_CAPACITY;
+    if (log_count_ < FRAME_LOG_CAPACITY) ++log_count_;
   }
 
-  // Store readable diagnostics in the same rolling log shown by the Web UI
-  // and included in the frame-capture text export.
+  void add_log_(const char *direction, const uint8_t *data, size_t len) {
+    if (!frame_logs_) return; // PSRAM allocation may fail; Modbus continues.
+    FrameLog &entry = frame_logs_[log_head_];
+    frame_log_policy::encode_hex(entry.hex, sizeof(entry.hex), data, len);
+    frame_log_advance_(entry, direction);
+  }
+
+  // Rare faults are also retained in the separate PSRAM flight recorder.
   void add_event_(const char *category, const String &message) {
     if (diag_is_important_event_(category)) diag_event_(category, message.c_str());
-    logs_[log_head_] = {String(category), message, millis(), wall_clock_ms_()};
-    log_head_ = (log_head_ + 1) % FRAME_LOG_CAPACITY;
-    if (log_count_ < FRAME_LOG_CAPACITY) log_count_++;
+    if (!frame_logs_) return;
+    FrameLog &entry = frame_logs_[log_head_];
+    snprintf(entry.hex, sizeof(entry.hex), "%s", message.c_str());
+    frame_log_advance_(entry, category);
   }
 
   void enable_client_tcp_keepalive_() {
@@ -1709,6 +1753,8 @@ class ModbusGateway : public Component {
   }
 
   void parse_rtu_() {
+    // Do not reorder newer RTU frames past a deferred foreground request.
+    if (deferred_fg_.active) return;
     // A background refresh must NEVER block RTU cache hits. A foreground
     // network transaction remains serialized, as before.
     if (client_txn_.state != ClientTxnState::IDLE &&
@@ -1820,22 +1866,83 @@ class ModbusGateway : public Component {
                    "; Function=" + String(pdu[0]) + "; Address=" + String(cache_start) +
                    "; Quantity=" + String(cache_quantity) + ".");
       }
-      // An uncached read/write is more important than background prefetch.
-      // Close the pending refresh socket, ensuring its TCP response cannot
-      // later be mistaken for this foreground RTU request.
+      // A background request already on the TCP wire owns the socket
+      // until its MBAP/PDU is complete. Do NOT close it or reinterpret a
+      // delayed reply as belonging to a foreground TID.
       if (client_txn_.state != ClientTxnState::IDLE &&
-          client_txn_.background_refresh) {
-        add_event_("CACHE REFRESH", "Cancelled background read for uncached foreground RTU request.");
-        diag_event_("DIAG PREEMPT", "RTU foreground demand preempted an in-flight background TCP refresh");
-        close_tcp_client_diagnostic_("background_preempted");
+          client_txn_.background_refresh &&
+          !deferred_rtu_policy::is_read(pdu[0])) {
+        // WRITEs (including FC23) must not be deferred behind a potentially
+        // slow background read: retain original prompt/control semantics.
+        // A close is mandatory to prevent old MBAP bytes contaminating the
+        // new write transaction. This close is explicitly diagnosed.
+        diag_event_("DIAG PREEMPT WRITE",
+                    "urgent write interrupted background read; socket close necessary");
+        close_tcp_client_diagnostic_("background_preempted_by_write");
         reset_client_transaction_();
         ++background_refresh_failed_;
+      } else if (deferred_rtu_policy::should_defer(
+              client_txn_.state != ClientTxnState::IDLE,
+              client_txn_.background_refresh, false, pdu[0])) {
+        deferred_fg_.active = true;
+        deferred_fg_.unit_id = unit_id;
+        deferred_fg_.function = pdu[0];
+        deferred_fg_.cacheable_read = cacheable_read;
+        deferred_fg_.size = uint16_t(pdu.size());
+        deferred_fg_.received_us = end_to_end_started_us;
+        memcpy(deferred_fg_.pdu, pdu.data(), pdu.size());
+        ++deferred_fg_count_;
+        char detail[140];
+        snprintf(detail, sizeof(detail),
+                 "queued unit=%u fc=%u bg_tid=%u local_port=%u no_socket_close=1",
+                 unsigned(unit_id), unsigned(pdu[0]),
+                 unsigned(client_txn_.transaction_id), unsigned(client_local_port_()));
+        diag_event_("DIAG PREEMPT", detail);
+        return;
       }
-      // Start the TCP exchange and return immediately. process_client_transaction_()
-      // will collect the MBAP header and PDU over subsequent loop iterations.
       start_client_transaction_(unit_id, pdu, end_to_end_started_us, cacheable_read);
       return;
     }
+  }
+
+  // Reuse the existing TCP socket only after the previous background
+  // response has been fully consumed (or its transaction failed).
+  void service_deferred_foreground_() {
+    if (!deferred_rtu_policy::can_dispatch(
+            deferred_fg_.active, client_txn_.state == ClientTxnState::IDLE)) return;
+    const uint32_t elapsed_us = uint32_t(micros() - deferred_fg_.received_us);
+    const uint32_t elapsed_ms = elapsed_us / 1000U;
+    if (elapsed_ms > deferred_fg_max_wait_ms_) deferred_fg_max_wait_ms_ = elapsed_ms;
+    const bool old_read = deferred_rtu_policy::read_expired(
+        deferred_fg_.function, elapsed_us, rtu_reply_window_ms_);
+    const bool newer_master = deferred_rtu_policy::discard_for_new_master(
+        deferred_fg_.function, !rx_.empty() || Serial1.available() > 0);
+    if (old_read || newer_master) {
+      ++deferred_fg_read_expired_;
+      record_expired_queued_read_(elapsed_ms);
+      char detail[128];
+      snprintf(detail, sizeof(detail),
+               "dropped deferred read fc=%u waited_ms=%lu deadline=%u newer_rtu=%u",
+               unsigned(deferred_fg_.function), (unsigned long)elapsed_ms,
+               unsigned(rtu_reply_window_ms_), unsigned(newer_master));
+      diag_event_("DIAG DEFER EXPIRED", detail);
+      deferred_fg_.active = false;
+      return;
+    }
+    std::vector<uint8_t> pdu(deferred_fg_.pdu,
+                             deferred_fg_.pdu + deferred_fg_.size);
+    const uint8_t unit = deferred_fg_.unit_id;
+    const uint32_t received_us = deferred_fg_.received_us;
+    const bool cacheable = deferred_fg_.cacheable_read;
+    deferred_fg_.active = false;
+    ++deferred_fg_dispatched_;
+    char detail[128];
+    snprintf(detail, sizeof(detail),
+             "dispatch deferred unit=%u fc=%u waited_ms=%lu socket_port=%u",
+             unsigned(unit), unsigned(pdu[0]), (unsigned long)elapsed_ms,
+             unsigned(client_local_port_()));
+    diag_event_("DIAG DEFER SEND", detail);
+    start_client_transaction_(unit, pdu, received_us, cacheable);
   }
 
   // Select the most overdue *recently requested* cached read, rather than
@@ -1844,7 +1951,7 @@ class ModbusGateway : public Component {
   // starvation of a slower-polled register group. No new heap allocation is
   // required to inspect the cache.
   void schedule_client_cache_refresh_() {
-    if (!rtu_listening_ || !swr_client_mode_() ||
+    if (!rtu_listening_ || !swr_client_mode_() || deferred_fg_.active ||
         client_txn_.state != ClientTxnState::IDLE || !rx_.empty()) return;
     const uint32_t now = millis();
     if (last_background_refresh_ms_ != 0U &&
@@ -3734,7 +3841,22 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
     return out;
   }
 
-  String frames_json_() {
+  static void append_json_escaped_(String &out, const char *value) {
+    out += '"';
+    if (value) for (const unsigned char *p =
+                   reinterpret_cast<const unsigned char *>(value); *p; ++p) {
+      const unsigned char c = *p;
+      if (c == '"' || c == '\\') { out += '\\'; out += char(c); }
+      else if (c < 0x20U) {
+        char escaped[7];
+        snprintf(escaped, sizeof(escaped), "\\u%04X", unsigned(c));
+        out += escaped;
+      } else out += char(c);
+    }
+    out += '"';
+  }
+
+  void send_frames_json_() {
     const uint32_t diagRenderStartedUs = micros();
     const uint32_t diagPollAtMs = millis();
     ++diag_web_frames_polls_;
@@ -3754,25 +3876,45 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
       }
     }
     diag_web_frames_last_ms_ = diagPollAtMs ? diagPollAtMs : 1U;
-    String out;
-    out.reserve(12288);
-    out = "{\"frames\":[";
+    // Chunked JSON avoids an unbounded 40-60 KiB temporary String when
+    // rendering 64 long Modbus frames. Same API schema and visible count.
+    web_.sendHeader("Cache-Control", "no-store");
+    web_.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    web_.send(200, "application/json", "");
+    String chunk;
+    chunk.reserve(4096U);
+    chunk = "{\"frames\":[";
     const size_t visible = log_count_ < FRAME_WEB_VISIBLE ? log_count_ : FRAME_WEB_VISIBLE;
-    for (size_t i=0;i<visible;i++) {
-      size_t idx=(log_head_+FRAME_LOG_CAPACITY-visible+i)%FRAME_LOG_CAPACITY;
-      if (i) out+=",";
-      out+="{\"time\":\""+format_frame_time_(logs_[idx])+"\",\"dir\":\""+logs_[idx].direction+"\",\"hex\":\""+logs_[idx].hex+"\"}";
+    for (size_t i = 0; frame_logs_ && i < visible; ++i) {
+      const size_t idx = (log_head_ + FRAME_LOG_CAPACITY - visible + i) % FRAME_LOG_CAPACITY;
+      const FrameLog &entry = frame_logs_[idx];
+      String row;
+      row.reserve(1024U);
+      if (i) row += ",";
+      row += "{\"time\":";
+      append_json_escaped_(row, format_frame_time_(entry).c_str());
+      row += ",\"dir\":";
+      append_json_escaped_(row, entry.direction);
+      row += ",\"hex\":";
+      append_json_escaped_(row, entry.hex);
+      row += "}";
+      if (chunk.length() + row.length() > 4096U && chunk.length()) {
+        web_.sendContent(chunk);
+        chunk = "";
+      }
+      chunk += row;
     }
-    out+="]}";
+    chunk += "]}";
+    if (chunk.length()) web_.sendContent(chunk);
+    web_.sendContent("");
     const uint32_t renderUs = uint32_t(micros() - diagRenderStartedUs);
     if (renderUs > 50000U) {
       char detail[128];
       snprintf(detail, sizeof(detail),
-               "path=/frames json_build_us=%lu entries=%u",
+               "path=/frames json_stream_us=%lu entries=%u",
                (unsigned long)renderUs, unsigned(visible));
       diag_event_("DIAG WEB RENDER", detail);
     }
-    return out;
   }
 
   // Export in bounded chunks: no full-history HTTP String allocation.
@@ -3794,16 +3936,17 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
     if (log_count_ == 0) chunk += "No frames recorded.\r\n";
     for (size_t i=0; i<log_count_; i++) {
       const size_t idx = (log_head_ + FRAME_LOG_CAPACITY - log_count_ + i) % FRAME_LOG_CAPACITY;
-      const size_t estimated = logs_[idx].direction.length() + logs_[idx].hex.length() + 40U;
+      const size_t estimated = strlen(frame_logs_[idx].direction) +
+                               strlen(frame_logs_[idx].hex) + 48U;
       if (chunk.length() + estimated > 2048U && chunk.length() > 0U) {
         web_.sendContent(chunk);
         chunk = "";
       }
-      chunk += format_frame_time_(logs_[idx]);
+      chunk += format_frame_time_(frame_logs_[idx]);
       chunk += " | ";
-      chunk += logs_[idx].direction;
+      chunk += frame_logs_[idx].direction;
       chunk += " | ";
-      chunk += logs_[idx].hex;
+      chunk += frame_logs_[idx].hex;
       chunk += "\r\n";
     }
     if (chunk.length()) web_.sendContent(chunk);
@@ -3827,7 +3970,8 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
   }
 
   void manual_request_() {
-    if (tcp_mode_ == "CLIENT" && client_txn_.state != ClientTxnState::IDLE) {
+    if (tcp_mode_ == "CLIENT" &&
+        (client_txn_.state != ClientTxnState::IDLE || deferred_fg_.active)) {
       manual_result_ = "Une transaction RTU/TCP est en cours. Réessayez après sa réponse.";
       web_.send(409, "text/plain; charset=utf-8", manual_result_);
       return;

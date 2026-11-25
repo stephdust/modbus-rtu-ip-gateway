@@ -44,8 +44,8 @@ const nonHelper = file.replace(closeMethod,"");
 assert.doesNotMatch(nonHelper, /\bclient_\.stop\(\)/,
   "Every gateway TCP stop must have one recorded cause");
 assert.equal((file.match(/note_tcp_client_open_\("/g) || []).length, 3);
-for(const cause of ["sta_unavailable","background_preempted","idle_peer_closed",
+for(const cause of ["sta_unavailable","background_preempted_by_write","idle_peer_closed",
                     "read_retry_reconnect","transaction_failed","foreground_write_failed"]) {
   assert.ok(file.includes('close_tcp_client_diagnostic_("'+cause+'")'), cause);
 }
-console.log("PASS: 23 close causes, TCP source-port correlation, 3 opens, STA/IP/ESPHome event separation");
+console.log("PASS: 23 close causes (write preemption only), TCP source-port correlation, 3 opens, STA/IP/ESPHome event separation");
