@@ -1,7 +1,7 @@
 # Correctif Web : journal des trames incrémental (ESPHome)
 
 **Version test : 1.3.16-rc2** — branche
-`fix/web-incremental-frames-20261125`, basée sur
+`fix/tcp-preempt-psram-web-20261125`, basée sur
 `fix/tcp-preempt-psram-web-20261125`.
 
 ## Pourquoi
@@ -82,7 +82,7 @@ Dans le YAML **effectivement utilisé** par Home Assistant :
 
 ```yaml
 external_components:
-  - source: github://stephdust/modbus-rtu-ip-gateway@fix/web-incremental-frames-20261125
+  - source: github://stephdust/modbus-rtu-ip-gateway@fix/tcp-preempt-psram-web-20261125
     refresh: 0s
     components: [modbus_gateway]
 ```
