@@ -6,6 +6,7 @@
 #include <WiFiUdp.h>
 #include <esp_netif.h>
 #include <esp_wifi.h>
+#include <esp_event.h>
 #include "mbap_codec.h"
 #include "modbus_gateway_policy.h"
 #include "tcp_connection_policy.h"
@@ -62,6 +63,18 @@ class ModbusGateway : public Component {
     // Arduino configTime() sets TZ to UTC; apply Europe/Paris after NTP setup.
     configTime(0, 0, "pool.ntp.org", "time.google.com");
     apply_timezone_();
+    // Only capture the disconnect reason in the ESP event thread. All logs,
+    // Wi-Fi/Modbus operations and socket cleanup stay on the normal loop.
+    const esp_err_t wifiDiagStatus = esp_event_handler_instance_register(
+        WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED,
+        &ModbusGateway::on_sta_disconnected_diag_, this, &wifi_disconnect_handler_);
+    if (wifiDiagStatus != ESP_OK)
+      ESP_LOGW("modbus_gateway", "WiFi disconnect diag registration failed (%d)", int(wifiDiagStatus));
+    const esp_err_t ipDiagStatus = esp_event_handler_instance_register(
+        IP_EVENT, IP_EVENT_STA_LOST_IP,
+        &ModbusGateway::on_sta_lost_ip_diag_, this, &ip_lost_handler_);
+    if (ipDiagStatus != ESP_OK)
+      ESP_LOGW("modbus_gateway", "IPv4 loss diag registration failed (%d)", int(ipDiagStatus));
     rx_.reserve(260);
     rx_timestamps_us_.reserve(260);
     client_txn_.request_pdu.reserve(253);
@@ -110,6 +123,8 @@ class ModbusGateway : public Component {
 
   void loop() override {
     const uint32_t loop_started_us = micros();
+    report_wifi_disconnect_diag_();
+    report_ip_lost_diag_();
     web_.handleClient();
     // Do not start another Modbus request after a Web configuration save.
     // The active asynchronous TCP/UDP client transaction may still finish.
@@ -121,7 +136,7 @@ class ModbusGateway : public Component {
       if (client_txn_.state == ClientTxnState::IDLE &&
           uint32_t(millis() - config_reboot_requested_ms_) >= 1500U) {
         ESP_LOGI("modbus_gateway", "Restarting with saved configuration between transactions.");
-        client_.stop();
+        close_tcp_client_diagnostic_("config_reboot");
         stop_tcp_clients_();
         tcp_server_.stop();
         ESP.restart();
@@ -194,6 +209,57 @@ class ModbusGateway : public Component {
  protected:
   // ESPHome status is diagnostic; only the ESP-IDF STA association and
   // assigned IPv4 allow connections to the remote Modbus server.
+  // Cross-task event handler: no logging, allocation or network operations.
+  static void on_sta_disconnected_diag_(void *ctx, esp_event_base_t base,
+                                        int32_t event_id, void *event_data) {
+    if (!ctx || base != WIFI_EVENT || event_id != WIFI_EVENT_STA_DISCONNECTED ||
+        !event_data) return;
+    auto *self = static_cast<ModbusGateway *>(ctx);
+    const auto *data = static_cast<const wifi_event_sta_disconnected_t *>(event_data);
+    __atomic_store_n(&self->wifi_last_disconnect_reason_,
+                     uint32_t(data->reason), __ATOMIC_RELAXED);
+    __atomic_add_fetch(&self->wifi_disconnect_event_count_, uint32_t(1), __ATOMIC_RELEASE);
+  }
+  static void on_sta_lost_ip_diag_(void *ctx, esp_event_base_t base,
+                                  int32_t event_id, void *) {
+    if (!ctx || base != IP_EVENT || event_id != IP_EVENT_STA_LOST_IP) return;
+    auto *self = static_cast<ModbusGateway *>(ctx);
+    __atomic_add_fetch(&self->ip_lost_event_count_, uint32_t(1), __ATOMIC_RELEASE);
+  }
+  void report_ip_lost_diag_() {
+    const uint32_t count = __atomic_load_n(&ip_lost_event_count_, __ATOMIC_ACQUIRE);
+    if (count == ip_lost_reported_) return;
+    const uint32_t delta = count - ip_lost_reported_;
+    ip_lost_reported_ = count;
+    wifi_ap_record_t apInfo{};
+    const bool associated = esp_wifi_sta_get_ap_info(&apInfo) == ESP_OK;
+    esp_netif_t *iface = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    esp_netif_ip_info_t ipInfo{};
+    const bool hasIPv4 = iface &&
+        esp_netif_get_ip_info(iface, &ipInfo) == ESP_OK && ipInfo.ip.addr != 0U;
+    const bool esphome = wifi::global_wifi_component &&
+        wifi::global_wifi_component->is_connected();
+    add_event_("WIFI STA IP LOST", String("count=") + String(count) +
+               "; new=" + String(delta) +
+               "; driver_assoc=" + (associated ? "yes" : "no") +
+               "; sta_ipv4=" + (hasIPv4 ? "yes" : "no") +
+               "; esphome_sw=" + (esphome ? "up" : "down") + ".");
+  }
+  void report_wifi_disconnect_diag_() {
+    const uint32_t count = __atomic_load_n(&wifi_disconnect_event_count_, __ATOMIC_ACQUIRE);
+    if (count == wifi_disconnect_reported_) return;
+    const uint32_t delta = count - wifi_disconnect_reported_;
+    wifi_disconnect_reported_ = count;
+    const uint32_t reason = __atomic_load_n(&wifi_last_disconnect_reason_, __ATOMIC_RELAXED);
+    char bssid[18]{};
+    snprintf(bssid, sizeof(bssid), "%02X:%02X:%02X:%02X:%02X:%02X",
+             last_sta_bssid_[0], last_sta_bssid_[1], last_sta_bssid_[2],
+             last_sta_bssid_[3], last_sta_bssid_[4], last_sta_bssid_[5]);
+    add_event_("WIFI STA DOWN", String("count=") + String(count) +
+               "; new=" + String(delta) + "; esp_reason=" + String(reason) +
+               "; last_rssi_dbm=" + String(last_sta_rssi_dbm_) +
+               "; last_bssid=" + String(bssid) + ".");
+  }
   struct StationLinkState {
     bool esphome_connected{false};
     bool associated{false};
@@ -267,6 +333,18 @@ class ModbusGateway : public Component {
   uint32_t tcp_idle_disconnects_{0};
   uint32_t tcp_keepalive_setup_failures_{0};
   uint32_t tcp_status_mismatches_{0};  // Edge-counted state disagreements.
+  uint32_t tcp_diag_next_session_id_{0};
+  uint32_t tcp_diag_current_session_id_{0};
+  esp_event_handler_instance_t wifi_disconnect_handler_{};
+  esp_event_handler_instance_t ip_lost_handler_{};
+  uint32_t ip_lost_event_count_{0};
+  uint32_t ip_lost_reported_{0};
+  uint32_t wifi_disconnect_event_count_{0};
+  uint32_t wifi_last_disconnect_reason_{0};
+  uint32_t wifi_disconnect_reported_{0};
+  mutable int last_sta_rssi_dbm_{0};
+  mutable uint8_t last_sta_bssid_[6]{};
+
   uint32_t tcp_offline_connect_skips_{0};
   uint32_t tcp_station_link_losses_{0};
   uint32_t tcp_last_mismatch_report_ms_{0};
@@ -455,6 +533,10 @@ class ModbusGateway : public Component {
     // to the LAN. Read the ESP-IDF station driver and its own IP interface.
     wifi_ap_record_t ap_info{};
     state.associated = esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK;
+    if (state.associated) {
+      last_sta_rssi_dbm_ = ap_info.rssi;
+      memcpy(last_sta_bssid_, ap_info.bssid, sizeof(last_sta_bssid_));
+    }
     esp_netif_t *station = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
     if (station != nullptr &&
         esp_netif_get_ip_info(station, &state.ipv4_info) == ESP_OK) {
@@ -493,6 +575,48 @@ class ModbusGateway : public Component {
     tcp_mismatch_active_ = mismatch;
   }
 
+  // Record the ephemeral source port so it matches the peer port observed
+  // by Flow.io. Read it before WiFiClient::stop() releases the descriptor.
+  uint16_t client_local_port_() const {
+    const int fd = client_.fd();
+    if (fd < 0) return 0U;
+    struct sockaddr_in local{};
+    socklen_t len = sizeof(local);
+    if (::getsockname(fd, reinterpret_cast<struct sockaddr *>(&local),
+                      &len) != 0 || local.sin_family != AF_INET) return 0U;
+    return ntohs(local.sin_port);
+  }
+  void note_tcp_client_open_(const char *origin) {
+    ++tcp_diag_next_session_id_;
+    if (!tcp_diag_next_session_id_) ++tcp_diag_next_session_id_;
+    tcp_diag_current_session_id_ = tcp_diag_next_session_id_;
+    add_event_("TCP OPEN", String("origin=") + origin +
+               "; sid=" + String(tcp_diag_current_session_id_) +
+               "; fd=" + String(client_.fd()) +
+               "; local_port=" + String(client_local_port_()) +
+               "; remote=" + String(cfg_host_.c_str()) + ":" + String(cfg_port_) + ".");
+  }
+  void close_tcp_client_diagnostic_(const char *reason) {
+    const int fd = client_.fd();
+    if (fd >= 0) {
+      const StationLinkState sta = station_link_state_();
+      // Diagnostic only; the ESPHome software flag never triggers close.
+      add_event_("TCP CLOSE", String("reason=") + reason +
+                 "; driver_assoc=" + (sta.associated ? "yes" : "no") +
+                 "; sta_ipv4=" + (sta.has_ipv4 ? "yes" : "no") +
+                 "; esphome_sw=" + (sta.esphome_connected ? "up" : "down") +
+                 "; sid=" + String(tcp_diag_current_session_id_) +
+                 "; fd=" + String(fd) +
+                 "; local_port=" + String(client_local_port_()) +
+                 "; remote=" + String(cfg_host_.c_str()) + ":" + String(cfg_port_) +
+                 "; tid=" + String(client_txn_.transaction_id) +
+                 "; txn=" + (client_txn_.state == ClientTxnState::IDLE ? "idle" : "active") +
+                 "; cache_refresh=" + (client_txn_.background_refresh ? "yes" : "no") + ".");
+    }
+    client_.stop(); // Preserve exactly the existing socket-close semantics.
+    tcp_diag_current_session_id_ = 0U;
+  }
+
   void maintain_persistent_tcp_client_() {
     using namespace tcp_connection_policy;
     if (!maintenance_allowed(tcp_mode_ == "CLIENT", transport_ == "TCP",
@@ -512,7 +636,7 @@ class ModbusGateway : public Component {
         ++tcp_station_link_losses_;
         add_event_("TCP DOWN", "STA association/IPv4 unavailable; persistent TCP socket closed.");
       }
-      if (client_.fd() >= 0) client_.stop();
+      if (client_.fd() >= 0) close_tcp_client_diagnostic_("sta_unavailable");
       tcp_link_was_up_ = false;
       tcp_keepalive_configured_ = false;
       tcp_next_reconnect_ms_ = now + kInitialRetryMs;
@@ -531,7 +655,7 @@ class ModbusGateway : public Component {
       tcp_keepalive_configured_ = false;
       tcp_next_reconnect_ms_ = now;
     }
-    if (client_.fd() >= 0) client_.stop();
+    if (client_.fd() >= 0) close_tcp_client_diagnostic_("idle_peer_closed");
     if (!due(now, tcp_next_reconnect_ms_)) return;
 
     // No arbitrary Modbus heartbeat: only a bounded TCP handshake at a
@@ -542,6 +666,7 @@ class ModbusGateway : public Component {
     if (client_.connect(cfg_host_.c_str(), cfg_port_, kIdleConnectTimeoutMs)) {
       client_.setNoDelay(true);
       enable_client_tcp_keepalive_();
+      note_tcp_client_open_("idle_supervisor");
       tcp_link_was_up_ = true;
       tcp_retry_delay_ms_ = kInitialRetryMs;
       tcp_next_reconnect_ms_ = 0;
@@ -550,7 +675,7 @@ class ModbusGateway : public Component {
                  cfg_host_.c_str() + ":" + String(cfg_port_) + " (idle supervisor).");
       return;
     }
-    client_.stop();
+    close_tcp_client_diagnostic_("idle_connect_failed");
     ++tcp_reconnect_failures_;
     tcp_next_reconnect_ms_ = millis() + tcp_retry_delay_ms_;
     add_event_("TCP RETRY", String("Idle TCP reconnect failed; next attempt in ") +
@@ -1169,7 +1294,7 @@ class ModbusGateway : public Component {
       if (client_txn_.state != ClientTxnState::IDLE &&
           client_txn_.background_refresh) {
         add_event_("CACHE REFRESH", "Cancelled background read for uncached foreground RTU request.");
-        client_.stop();
+        close_tcp_client_diagnostic_("background_preempted");
         reset_client_transaction_();
         ++background_refresh_failed_;
       }
@@ -1293,7 +1418,7 @@ class ModbusGateway : public Component {
                  "; STA=" + (station.ready() ? "ready" : "unready") +
                  "; local IP=" + local_ip);
     } else {
-      client_.stop();
+      close_tcp_client_diagnostic_("new_connection_required");
       // No synchronous TCP connect attempts when only AP mode or when DHCP
       // has not yet provided a routable STA address. Preserve RTU error mode.
       if (!station.ready()) {
@@ -1320,13 +1445,14 @@ class ModbusGateway : public Component {
         client_txn_.connect_us = micros() - connect_started_us;
         add_event_("TCP ERROR", String("Connection to ") + target + " failed after " +
                    String(client_txn_.connect_us / 1000) + " ms (connect() returned false).");
-        client_.stop();
+        close_tcp_client_diagnostic_("foreground_connect_failed");
         fail_client_transaction_("TCP connection failed.");
         return;
       }
       client_txn_.connect_us = micros() - connect_started_us;
       client_.setNoDelay(true);
       enable_client_tcp_keepalive_();
+      note_tcp_client_open_("foreground");
       tcp_link_was_up_ = true;
       tcp_retry_delay_ms_ = tcp_connection_policy::kInitialRetryMs;
       tcp_next_reconnect_ms_ = 0;
@@ -1343,7 +1469,7 @@ class ModbusGateway : public Component {
             rtu_reply_window_ms_)) {
       ++rtu_expired_foreground_reads_;
       add_event_("RTU EXPIRED", "Foreground read expired during TCP connect; no Modbus PDU sent.");
-      client_.stop();
+      close_tcp_client_diagnostic_("rtu_deadline_expired_after_connect");
       tcp_link_was_up_ = false;
       tcp_keepalive_configured_ = false;
       reset_client_transaction_();
@@ -1369,7 +1495,7 @@ class ModbusGateway : public Component {
     client_txn_.tcp_write_us = micros() - write_started_us;
     if (written != request_length) {
       add_event_("TCP ERROR", "Failed to write the Modbus TCP request to the socket.");
-      client_.stop();
+      close_tcp_client_diagnostic_("foreground_write_failed");
       fail_client_transaction_("TCP request write failed.", false, true);
       return;
     }
@@ -1387,7 +1513,7 @@ class ModbusGateway : public Component {
     if (transport_ == "UDP") {
       // UDP is connectionless; do not report TCP keepalive events.
     } else if (!tcp_persistent_) {
-      client_.stop();
+      close_tcp_client_diagnostic_("foreground_nonpersistent_complete");
     } else if (transport_ == "TCP") {
       const String target = String(cfg_host_.c_str()) + ":" + String(cfg_port_);
       add_event_("TCP KEEP", String("Persistent connection kept open to ") + target + ".");
@@ -1473,7 +1599,7 @@ class ModbusGateway : public Component {
     const std::vector<uint8_t> request_pdu = client_txn_.request_pdu;
     add_event_("TCP RETRY", String("Reconnecting once for read FC") + String(function) +
                " after a reused connection failed: " + reason);
-    client_.stop();
+    close_tcp_client_diagnostic_("read_retry_reconnect");
     start_client_transaction_(unit_id, request_pdu, started_us, cacheable_read,
                               true, background_refresh);
     return true;
@@ -1490,7 +1616,7 @@ class ModbusGateway : public Component {
         client_txn_.response_timing.first_delay_us(client_txn_.response_started_us) : 0;
     const uint32_t response_span_us = client_txn_.response_timing.span_us();
     add_event_(transport_ == "UDP" ? "UDP ERROR" : "TCP ERROR", reason);
-    if (transport_ != "UDP" && client_) client_.stop();
+    if (transport_ != "UDP" && client_) close_tcp_client_diagnostic_("transaction_failed");
     if (client_txn_.request_pdu.empty()) {
       reset_client_transaction_();
       return;
@@ -1669,7 +1795,7 @@ class ModbusGateway : public Component {
                  "; STA=" + (station.ready() ? "ready" : "unready") +
                  "; local IP=" + local_ip);
     } else {
-      client_.stop();
+      close_tcp_client_diagnostic_("manual_new_connection");
       if (!station.ready()) {
         ++tcp_offline_connect_skips_;
         add_event_("TCP OFFLINE", "Manual test: STA association/IPv4 unavailable; no TCP handshake.");
@@ -1687,12 +1813,13 @@ class ModbusGateway : public Component {
         const uint32_t elapsed_ms = connect_us / 1000;
         add_event_("TCP ERROR", String("Connection to ") + target + " failed after " + String(elapsed_ms) + " ms (connect() returned false).");
         ESP_LOGW("modbus_gateway", "TCP client: connection to %s:%u failed after %u ms", cfg_host_.c_str(), unsigned(cfg_port_), unsigned(elapsed_ms));
-        client_.stop();
+        close_tcp_client_diagnostic_("manual_connect_failed");
         return finish(false);
       }
       connect_us = micros() - connect_started_us;
       client_.setNoDelay(true);
       enable_client_tcp_keepalive_();
+      note_tcp_client_open_("manual");
       tcp_link_was_up_ = tcp_persistent_;
       tcp_retry_delay_ms_ = tcp_connection_policy::kInitialRetryMs;
       tcp_next_reconnect_ms_ = 0;
@@ -1715,7 +1842,7 @@ class ModbusGateway : public Component {
     if (written != req.size()) {
       add_event_("TCP ERROR", "Failed to write the Modbus TCP request to the socket.");
       ESP_LOGW("modbus_gateway", "TCP client: request write failed");
-      client_.stop();
+      close_tcp_client_diagnostic_("manual_write_failed");
       return finish(false);
     }
 
@@ -1728,7 +1855,7 @@ class ModbusGateway : public Component {
       tcp_response_span_us = tcp_response_timing.span_us();
       add_event_("TCP ERROR", "Timeout or disconnect while waiting for the Modbus TCP response header.");
       ESP_LOGW("modbus_gateway", "TCP client: timeout waiting for response header");
-      client_.stop();
+      close_tcp_client_diagnostic_("manual_header_timeout");
       return finish(false);
     }
     uint16_t rtid=(uint16_t(mbap[0])<<8)|mbap[1];
@@ -1740,7 +1867,7 @@ class ModbusGateway : public Component {
       tcp_response_span_us = tcp_response_timing.span_us();
       add_event_("TCP ERROR", "Invalid Modbus TCP MBAP header (transaction, protocol, length or Unit ID mismatch).");
       ESP_LOGW("modbus_gateway", "TCP client: invalid MBAP response (TID %u/%u, protocol %u, length %u, Unit ID %u/%u)", unsigned(rtid), unsigned(tid), unsigned(proto), unsigned(rlen), unsigned(mbap[6]), unsigned(unit_id));
-      client_.stop();
+      close_tcp_client_diagnostic_("manual_invalid_header");
       return finish(false);
     }
     std::vector<uint8_t> rest;
@@ -1751,7 +1878,7 @@ class ModbusGateway : public Component {
       tcp_response_span_us = tcp_response_timing.span_us();
       add_event_("TCP ERROR", "Timeout or disconnect while waiting for the Modbus TCP response data.");
       ESP_LOGW("modbus_gateway", "TCP client: timeout waiting for response data");
-      client_.stop();
+      close_tcp_client_diagnostic_("manual_body_timeout");
       return finish(false);
     }
     tcp_response_us = micros() - response_started_us;
@@ -1759,18 +1886,18 @@ class ModbusGateway : public Component {
     tcp_response_span_us = tcp_response_timing.span_us();
     add_log_("TCP RX", rest.data(), rest.size());
     if (!tcp_persistent_) {
-      client_.stop();
+      close_tcp_client_diagnostic_("manual_nonpersistent_complete");
     } else {
       add_event_("TCP KEEP", String("Persistent connection kept open to ") + target + ".");
     }
     if (rest.empty()) {
-      client_.stop();  // A malformed response must not leave a reusable socket.
+      close_tcp_client_diagnostic_("manual_empty_pdu");  // A malformed response must not leave a reusable socket.
       add_event_("TCP ERROR", "The Modbus TCP server returned an empty response PDU.");
       ESP_LOGW("modbus_gateway", "TCP client: empty response PDU");
       return finish(false);
     }
     if (rest[0]!=pdu[0] && rest[0]!=uint8_t(pdu[0]|0x80)) {
-      client_.stop();
+      close_tcp_client_diagnostic_("manual_function_mismatch");
       add_event_("TCP ERROR", "The response function code does not match the request.");
       ESP_LOGW("modbus_gateway", "TCP client: response function code mismatch");
       return finish(false);
@@ -2002,7 +2129,7 @@ class ModbusGateway : public Component {
     if (client_txn_.state != ClientTxnState::IDLE) {
       fail_client_transaction_("TCP transaction aborted because the gateway configuration was applied.");
     }
-    client_.stop();
+    close_tcp_client_diagnostic_("config_applied");
     stop_tcp_clients_();
     if (tcp_mode_ == "SERVER" && transport_ == "TCP") {
       tcp_server_.begin(cfg_port_);
@@ -3182,7 +3309,7 @@ updateListenState();refresh();refreshConnections();setInterval(()=>{refresh();re
   }
 
   void send_reboot_response_(bool english) {
-    client_.stop();
+    close_tcp_client_diagnostic_("user_reboot");
     tcp_server_.stop();
     stop_tcp_clients_();
     web_.sendHeader("Cache-Control", "no-store, no-cache, must-revalidate");
