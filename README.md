@@ -12,9 +12,13 @@ A Wi-Fi Modbus gateway built with **ESPHome**, **ESP32-S3** and the **Arduino fr
 
 > **Historical v1.3.8 milestone:** supports **TCP Client, TCP Server, UDP Client and UDP Server**. TCP Client persistent connections now reconnect automatically even when RTU traffic and Web monitoring are idle. The maintainer reports successful testing on the ESP32-S3 gateway; comprehensive long-duration and multi-mode regression testing remains pending. See [TCP/UDP development and UI behavior](docs/TCP_UDP_DEVELOPMENT.md).
 
+## Current main snapshot — 1.3.16-rc2 (25 November 2026)
+
+`main` now includes the TCP background-refresh read deferral (without unnecessary socket close), bounded RTU deadlines, a fixed 256-entry PSRAM frame log and incremental Web frame monitoring. The Web page is designed for occasional diagnosis, not continuous operation. Initial ESP32-S3 field captures show a persistent TCP connection, zero CRC errors and zero UART overflow; multi-day stability and all transport-mode regressions remain to be validated. See [integration note](docs/MAIN_1.3.16_RC2_FR.md), [TCP/PSRAM details](docs/TCP_PREEMPT_PSRAM_FIX_FR.md) and [incremental Web details](docs/WEB_INCREMENTAL_FRAMES_FR.md).
+
 ## Installation simplifiée dans Home Assistant (ESPHome)
 
-**Sans cloner GitHub et sans copier le composant C++ localement :** installer **ESPHome Device Builder** dans Home Assistant, créer un appareil, coller le contenu de [`my-modbus-gateway.yaml`](my-modbus-gateway.yaml), modifier le bloc `external_components` pour pointer vers `@v1.3.2`, compléter les secrets `wifi_ssid`, `wifi_password` et `api_key`, puis lancer **Install**. ESPHome télécharge automatiquement `modbus_gateway` depuis GitHub pendant la compilation.
+**Sans cloner GitHub et sans copier le composant C++ localement :** installer **ESPHome Device Builder** dans Home Assistant, créer un appareil, coller le contenu de [`my-modbus-gateway.yaml`](my-modbus-gateway.yaml), conserver le bloc `external_components` pointant sur `@main`, compléter les secrets `wifi_ssid`, `wifi_password` et `api_key`, puis lancer **Install**. ESPHome télécharge automatiquement `modbus_gateway` depuis GitHub pendant la compilation.
 
 **[Guide pas à pas : Home Assistant, YAML, secrets, compilation, USB et OTA](docs/INSTALL_HOME_ASSISTANT.md)**
 
@@ -283,6 +287,7 @@ TCP Server accepts inbound Modbus TCP masters; UDP Server accepts MBAP datagrams
 - [Byte-level latency diagnostics](docs/LATENCY_DIAGNOSTICS.md)
 - [Client TCP asynchronous handling](docs/CLIENT_TCP_ASYNC.md)
 - [Response cache configuration and behavior](docs/CACHE.md)
+- [Current `main` integration: TCP / PSRAM / incremental Web (1.3.16-rc2)](docs/MAIN_1.3.16_RC2_FR.md)
 
 ## Security notes
 

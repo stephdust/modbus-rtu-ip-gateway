@@ -1,8 +1,9 @@
 # Diagnostic étendu ESPHome ↔ Flow.io (25/11/2026)
 
-Branche de test : `diag/tcp-close-wifi-reasons-20261125`. Ce correctif ajoute
-des mesures, **pas** un nouvel algorithme Modbus. Les délais TCP/RTU, le cache,
-le mode Silent, le scheduler et les décisions de reconnexion sont conservés.
+Instrumentation initialement développée sur `diag/tcp-close-wifi-reasons-20261125`,
+intégrée à `main` avec **1.3.16-rc2**. Ces mesures sont diagnostiques :
+elles ne changent pas les délais de requête, le mode Silent ni les règles
+fondamentales du cache et du bus RTU.
 
 ## Collecte unique après une pause
 
@@ -17,8 +18,10 @@ La passerelle fournit désormais :
   maxima, durées et états instantanés (station ESP-IDF, ESPHome, socket, cache,
   UART, disponibilité mémoire interne et PSRAM).
 - `http://IP-PASSERELLE/frames.txt` : capture complète habituelle (256 entrées).
-- `http://IP-FLOWIO/` : récupérer les journaux Flow.io avec `[MODBUS-RX]`
-  `peer=IP:port` et `errno`.
+- `http://IP-FLOWIO/` : récupérer les journaux Flow.io. Les builds
+  instrumentés pouvaient exposer `[MODBUS-RX] peer=IP:port` ; le code Flow.io
+  nettoyé ne conserve plus ce log détaillé par défaut. Utiliser les vrais
+  avertissements `MODBUS-ERR`, les compteurs et les événements restants.
 
 **Conseil** : après un blocage apparent de l'écoute des trames, relever
 `diag.txt`, `diag.json` et `frames.txt` *sans redémarrer la passerelle*,
@@ -37,7 +40,7 @@ envoi réduit à deux fichiers côté passerelle.
 | `DIAG RTU RX GAP` | Silence entre deux lectures d'octets >500 ms ; **ne prouve pas** que la boucle se bloquait, le maître peut aussi être silencieux |
 | `DIAG TCP CONNECT` | Handshake TCP >100 ms, y compris succès ou échec et contexte (superviseur, foreground, cache, manuel) |
 | `DIAG TCP WAIT` | Réponse TCP attendue >1 s avec TID, FC, adresse, état MBAP/PDU, nombre d'octets déjà reçus |
-| `DIAG PREEMPT` | Une demande RTU prioritaire a annulé un rafraîchissement TCP de fond |
+| `DIAG PREEMPT` | Lecture RTU différée pendant le rafraîchissement TCP de fond **sans fermer le socket** ; les écritures conservent une préemption spécifique |
 | `DIAG CACHE SLOW` | Rafraîchissement des valeurs Modbus >1 s |
 | `DIAG WEB RENDER` | Construction JSON de `/frames` >50 ms |
 | `DIAG WEB EXPORT` | Export `/frames.txt` ou `/diag.txt` >100 ms |
@@ -82,14 +85,14 @@ Dans le YAML **réellement installé dans Home Assistant**, pointer vers :
 
 ```yaml
 external_components:
-  - source: github://stephdust/modbus-rtu-ip-gateway@diag/tcp-close-wifi-reasons-20261125
+  - source: github://stephdust/modbus-rtu-ip-gateway@main
     refresh: 0s
     components: [modbus_gateway]
 ```
 
-La branche possède aussi un `my-modbus-gateway.yaml` d'exemple mis à jour ;
-l'édition de cet exemple sur GitHub ne modifie pas automatiquement la
-configuration utilisée par Home Assistant.
+Le fichier `my-modbus-gateway.yaml` sur `main` utilise la même référence.
+Toutefois, son changement sur GitHub ne modifie pas automatiquement le YAML
+déjà installé dans Home Assistant.
 
 Tests dans le dépôt :
 

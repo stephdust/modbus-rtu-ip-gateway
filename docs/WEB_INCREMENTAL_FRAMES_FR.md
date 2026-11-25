@@ -1,8 +1,7 @@
 # Correctif Web : journal des trames incrémental (ESPHome)
 
-**Version test : 1.3.16-rc2** — branche
-`fix/tcp-preempt-psram-web-20261125`, basée sur
-`fix/tcp-preempt-psram-web-20261125`.
+**Version intégrée à `main` : 1.3.16-rc2 (25/11/2026).**
+Développée initialement sur `fix/tcp-preempt-psram-web-20261125`.
 
 ## Pourquoi
 
@@ -82,13 +81,16 @@ Dans le YAML **effectivement utilisé** par Home Assistant :
 
 ```yaml
 external_components:
-  - source: github://stephdust/modbus-rtu-ip-gateway@fix/tcp-preempt-psram-web-20261125
+  - source: github://stephdust/modbus-rtu-ip-gateway@main
     refresh: 0s
     components: [modbus_gateway]
 ```
 
-La version doit afficher `1.3.16-rc2`. Ne pas fusionner dans `main`
-avant compilation ESPHome et essais sur l'ESP32-S3.
+La version doit afficher `1.3.16-rc2`. Les relevés matériels ont confirmé
+79 réponses différentielles sur 86 consultations, sans erreur CRC ni
+saturation UART. Le pic Web reste à 406,8 ms ; le navigateur sert au
+diagnostic ponctuel et reste fermé environ 99 % du temps. Les essais
+longue durée ne sont pas encore achevés.
 
 ## Tests locaux
 

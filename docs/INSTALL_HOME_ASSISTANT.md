@@ -2,7 +2,7 @@
 
 **Objectif : installer la passerelle Modbus RTU ↔ TCP/UDP sur un ESP32-S3 directement avec ESPHome Device Builder dans Home Assistant, sans cloner le dépôt GitHub et sans copier les composants C++ dans Home Assistant.**
 
-Ce guide utilise le fichier réel [`my-modbus-gateway.yaml`](../my-modbus-gateway.yaml), la configuration des secrets décrite dans [`secrets.yaml.example`](../secrets.yaml.example) et la release [v1.3.2](https://github.com/stephdust/my-modbus-rtu-ip-gateway/releases/tag/v1.3.2).
+Ce guide utilise [`my-modbus-gateway.yaml`](../my-modbus-gateway.yaml) de `main` (composant **1.3.16-rc2** au 25/11/2026) et [`secrets.yaml.example`](../secrets.yaml.example). La [release historique v1.3.2](https://github.com/stephdust/modbus-rtu-ip-gateway/releases/tag/v1.3.2) reste disponible, sans les correctifs récents.
 
 ## Prérequis
 
@@ -24,7 +24,7 @@ Les intitulés exacts des boutons peuvent varier selon la version du Device Buil
 
 ## 2. Copier le seul YAML du projet
 
-1. Ouvrir le [YAML du projet sur GitHub](https://github.com/stephdust/my-modbus-rtu-ip-gateway/blob/main/my-modbus-gateway.yaml), puis **Raw / Brut** pour récupérer tout le contenu.
+1. Ouvrir le [YAML du projet sur GitHub](https://github.com/stephdust/modbus-rtu-ip-gateway/blob/main/my-modbus-gateway.yaml), puis **Raw / Brut** pour récupérer tout le contenu.
 2. Dans **Edit / Modifier** de l'appareil ESPHome, **remplacer entièrement** le contenu généré par l'assistant avec ce YAML (ne pas concaténer deux blocs `esphome:`, `wifi:` ou `api:`).
 3. En haut du fichier, adapter au besoin :
 
@@ -39,17 +39,24 @@ Les intitulés exacts des boutons peuvent varier selon la version du Device Buil
 
    Le nom ESPHome doit être unique sur le réseau. Le fichier du Device Builder et la valeur `substitutions.name` peuvent être harmonisés pour éviter les confusions. Conserver le `board: esp32-s3-devkitc1-n16r8`, le `framework: type: arduino` et la configuration `psram:` du modèle fourni **pour la carte Waveshare de référence** ; ne les changer qu'en cas de matériel différent.
 
-4. Dans `external_components:`, préférer **la version stable v1.3.2** :
+4. Dans `external_components:`, garder la version actuelle depuis **main** :
 
    ```yaml
    external_components:
-     - source: github://stephdust/my-modbus-rtu-ip-gateway@v1.3.2
+     - source: github://stephdust/modbus-rtu-ip-gateway@main
+       refresh: 0s
        components: [modbus_gateway]
    ```
 
-   Cette section **remplace** le bloc `external_components:` fourni dans le YAML (qui pointe vers `@main`). Ne pas conserver deux blocs `external_components:` parallèles.
+   Ce bloc figure déjà dans le YAML d'exemple : ne pas créer de doublon.
+   Le fichier YAML réellement installé dans ESPHome Device Builder doit
+   être mis à jour puis recompilé : un commit GitHub ne change pas
+   automatiquement les appareils installés.
 
-   Pour tester les futures modifications, utiliser `@main` et éventuellement `refresh: 0s` à la place de `@v1.3.2`. La release fixe le code source à une version reproductible ; `main` évolue.
+   `main` fournit `1.3.16-rc2` au 25 novembre 2026. Pour un build
+   reproductible, remplacer `@main` par un SHA de commit fixé. L'ancien
+   tag `@v1.3.2` n'inclut pas ces correctifs. Voir la
+   [note d'intégration](MAIN_1.3.16_RC2_FR.md).
 
 **Important :** conserver dans le YAML l'entrée suivante :
 
@@ -125,7 +132,7 @@ L'intégration Home Assistant/ESPHome peut être ajoutée pour superviser l'appa
 |---|---|
 | `Secret 'wifi_ssid' not defined` | Ajouter la clé dans `/config/esphome/secrets.yaml` ; même chose pour `wifi_password` et `api_key` |
 | Erreur liée à `api.encryption.key` | Utiliser une vraie clé ESPHome Base64 de 32 octets |
-| `Component modbus_gateway not found` | Vérifier le bloc `external_components`, l'accès GitHub du serveur et la référence `@v1.3.2` |
+| `Component modbus_gateway not found` | Vérifier le bloc `external_components`, l'accès GitHub du serveur et la référence `@main` ou le commit SHA choisi |
 | Erreur de carte/framework | Conserver la configuration ESP32-S3/Arduino/PSRAM du YAML d'origine sur la Waveshare |
 | Aucun port USB trouvé | Câble USB de données, port BOOT/RESET si nécessaire, ou téléchargement manuel puis ESPHome Web |
 | Passerelle joignable, pas de réponses Modbus | Vérifier les réglages du serveur TCP/UDP et du RS485 sur le **port 80**, puis exporter les trames |
@@ -134,7 +141,7 @@ L'intégration Home Assistant/ESPHome peut être ajoutée pour superviser l'appa
 ## Sources et références
 
 - [YAML complet du projet](../my-modbus-gateway.yaml) et [exemple de secrets](../secrets.yaml.example)
-- [Release officielle v1.3.2](https://github.com/stephdust/my-modbus-rtu-ip-gateway/releases/tag/v1.3.2)
+- [Version sur main](MAIN_1.3.16_RC2_FR.md) et [release historique v1.3.2](https://github.com/stephdust/modbus-rtu-ip-gateway/releases/tag/v1.3.2)
 - [Installer ESPHome Device Builder dans Home Assistant (documentation officielle)](https://esphome.io/install/)
 - [Composants externes ESPHome depuis GitHub](https://esphome.io/components/external_components/)
 - [Guide général / comportement de la passerelle](QUICK_START.md) et [cache Modbus](CACHE.md)

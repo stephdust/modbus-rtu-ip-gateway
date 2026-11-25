@@ -1,16 +1,16 @@
-# Modbus TCP socket and ESPHome STA diagnostics (test branch)
+# Modbus TCP socket and ESPHome STA diagnostics
 
-This is an instrumentation-only patch. It preserves the existing Modbus
-transaction/RTU scheduler, cache, retry/backoff and TCP close/reconnect logic.
+Originally developed on the diagnostic branch, these probes are now part of
+**`main` (`1.3.16-rc2`)**. They preserve the Modbus/RTU scheduler,
+cache, backoff and TCP close/reconnect logic.
 
 ## Compile through ESPHome
 
-The source `external_components` must point to
-`github://stephdust/modbus-rtu-ip-gateway@diag/tcp-close-wifi-reasons-20261125`
-while testing, with `refresh: 0s`. This repository's diagnostic branch
-contains a matching `my-modbus-gateway.yaml` example; your already installed
-ESPHome YAML in Home Assistant does **not** switch branches automatically.
-After merging and validating a release, restore the production `@main` ref.
+Set `external_components` to
+`github://stephdust/modbus-rtu-ip-gateway@main` with `refresh: 0s`.
+The GitHub example has been updated, but an existing Home Assistant ESPHome
+configuration does **not** change automatically. Pin a commit SHA rather
+than moving `main` to reproduce a specific build.
 
 ## Capture and compare
 
@@ -28,8 +28,10 @@ Match:
 - Gateway `WIFI STA IP LOST`: ESP-IDF IP loss event; logs current driver
   association, station IPv4 presence and ESPHome software state. An IP loss
   is not necessarily a loss of radio association.
-- Flow.io `[MODBUS-RX]`: `peer=IP:port`, socket source `recv`/`peek`,
-  TCP session id, `errno` and the delayed snapshot age.
+- In instrumented Flow.io versions, `[MODBUS-RX]` identified the `peer=IP:port`,
+  socket source, `errno` and the age of the **recorded error at publication**,
+  not the socket connection age. The cleaned Flow.io branch omits this
+  detailed log in normal operation.
 
 The Gateway `sid` and Flow.io `sid` are **not the same numeric ID**.
 Correlate TCP connections using the Gateway STA IP + `local_port` against
@@ -50,5 +52,5 @@ g++ -std=c++11 -Wall -Wextra -Werror -pedantic -Icomponents/modbus_gateway tests
 ```
 
 These tests validate local policy/source invariants, **not** Wi-Fi hardware,
-lwIP behavior or ESPHome firmware compilation. Test on the ESP32-S3 before
-merging to `main`.
+lwIP behavior or ESPHome firmware compilation. Initial hardware testing with `1.3.16-rc2` is complete, but extended
+endurance and all transport modes have not yet been qualified.

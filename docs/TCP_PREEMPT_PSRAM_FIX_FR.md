@@ -1,7 +1,8 @@
 # Correctif passerelle ESPHome : TCP préemption + PSRAM Web
 
-Branche de test : `fix/tcp-preempt-psram-web-20261125`. Version embarquée
-`1.3.16-rc1`. Ce code **n'a pas été fusionné** sur `main`.
+Correctif développé sur `fix/tcp-preempt-psram-web-20261125` (essai initial
+`1.3.16-rc1`), puis intégré à `main` dans **1.3.16-rc2** le 25/11/2026.
+La validation longue durée reste à effectuer.
 
 ## Cause démontrée dans les logs (25/11/2026)
 
@@ -63,14 +64,15 @@ Dans le YAML **réellement utilisé par Home Assistant** :
 
 ```yaml
 external_components:
-  - source: github://stephdust/modbus-rtu-ip-gateway@fix/tcp-preempt-psram-web-20261125
+  - source: github://stephdust/modbus-rtu-ip-gateway@main
     refresh: 0s
     components: [modbus_gateway]
 ```
 
-Le YAML d'exemple de cette branche a été mis à jour. ESPHome doit afficher
-la version `1.3.16-rc1`. Ne pas fusionner sur `main` avant essai sur la
-passerelle et comparaison des nouveaux logs Flow.io.
+Le YAML d'exemple sur `main` pointe maintenant vers `@main`. ESPHome doit
+indiquer la version `1.3.16-rc2`. Les essais sur ESP32-S3 sont encourageants,
+mais un test 12–24 heures avec la page Web fermée reste prévu. Modifier la
+configuration YAML réelle dans Home Assistant, puis recompiler.
 
 ## Tests hors ESPHome
 
