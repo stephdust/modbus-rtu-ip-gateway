@@ -14,7 +14,7 @@ A Wi-Fi Modbus gateway built with **ESPHome**, **ESP32-S3** and the **Arduino fr
 
 ## Current main version — 1.4 (25 November 2026)
 
-`main` now includes the TCP background-refresh read deferral (without unnecessary socket close), bounded RTU deadlines, a fixed 256-entry PSRAM frame log and incremental Web frame monitoring. The Web page is designed for occasional diagnosis, not continuous operation. Initial ESP32-S3 field captures show a persistent TCP connection, zero CRC errors and zero UART overflow; multi-day stability and all transport-mode regressions remain to be validated. See [1.4 integration note](docs/MAIN_1.4_FR.md) (based on the previously tested `1.3.16-rc2` code), [TCP/PSRAM details](docs/TCP_PREEMPT_PSRAM_FIX_FR.md) and [incremental Web details](docs/WEB_INCREMENTAL_FRAMES_FR.md).
+`main` now includes the TCP background-refresh read deferral (without unnecessary socket close), bounded RTU deadlines, a fixed 256-entry PSRAM frame log and incremental Web frame monitoring. The Web page is designed for occasional diagnosis, not continuous operation. Initial ESP32-S3 field captures show a persistent TCP connection, zero CRC errors and zero UART overflow; multi-day stability and all transport-mode regressions remain to be validated. See [v1.4 release notes](docs/RELEASE_NOTES_v1.4.md), [1.4 integration note](docs/MAIN_1.4_FR.md) (based on the previously tested `1.3.16-rc2` code), [TCP/PSRAM details](docs/TCP_PREEMPT_PSRAM_FIX_FR.md) and [incremental Web details](docs/WEB_INCREMENTAL_FRAMES_FR.md).
 
 ## Installation simplifiée dans Home Assistant (ESPHome)
 
